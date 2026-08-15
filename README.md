@@ -2,9 +2,11 @@
 
 [![skills.sh](https://skills.sh/b/maxgfr/skills)](https://skills.sh/maxgfr/skills)
 
-Process skills for agent-driven engineering.
+My agent skills. One install, one place to keep them.
 
-An agent will tell you it is done. It will be wrong often enough that you check anyway — and every time you ask for another pass, it finds something. That loop is the expensive part of working with an agent, and these skills are about closing it.
+They are process skills: they change how an agent works rather than what it knows. Small, composable, and meant to be hacked on — install them, read them, make them yours.
+
+The set grows. Today it is one skill, chosen because it closes the loop that costs the most: an agent tells you it is done, is wrong often enough that you check anyway, and finds something every time you ask for another pass.
 
 ## Install
 
@@ -23,11 +25,20 @@ npx skills add maxgfr/skills
 
 Pick one. Installing both leaves you with every skill twice.
 
+Installing takes the whole set, or pick what you want:
+
+```bash
+npx skills add maxgfr/skills --list          # browse first
+npx skills add maxgfr/skills --skill verify  # take one
+```
+
 ## Skills
 
 | Skill | What it does |
 |---|---|
 | [`verify`](./skills/verify) | Proves that work just produced actually works, then fixes the blockers. |
+
+---
 
 ### verify
 
@@ -67,9 +78,20 @@ Every stage's model is configurable. The default split follows what each stage i
 
 Drop that in `.claude/verify.json` (this repo) or `~/.claude/verify.json` (everywhere). Full reference: [`references/config.md`](./skills/verify/references/config.md).
 
-## Tooling in these skills
+Full documentation lives with the skill: [`skills/verify/`](./skills/verify).
 
-The two engines ship with the skill and need nothing but Node:
+---
+
+## House style
+
+What every skill here follows, and what a new one has to earn:
+
+- **The description is the trigger.** It decides whether the skill fires at all, so it says *when to use this* in the words someone would actually type. CI rejects one that does not.
+- **Anything with a right answer is a script, not a prompt.** Detecting commands, scanning a diff for forbidden patterns — those are dependency-free `.mjs` with tests. A model asked to be a linter is a linter that sometimes hallucinates.
+- **`SKILL.md` routes; `references/` holds the detail.** A model reads the whole SKILL.md every time it triggers, and a reference only when it needs that phase.
+- **Each one says what it will not do.** A skill that lists its refusals is one you can hand a loop.
+
+The engines ship with the skills and run on their own:
 
 ```bash
 node skills/verify/scripts/detect-gates.mjs --cwd . --pretty   # what "green" means here
@@ -80,7 +102,7 @@ Both are deterministic, dependency-free, and covered by tests. They work outside
 
 ## My other skills
 
-These live in their own repos, each with its own engine and release cycle:
+Not everything belongs here. A skill built around a substantial engine — a taint analyser, an indexer, a translation pipeline — gets its own repo and its own release cycle. This one is for process skills, which are mostly prose and a script or two.
 
 | | |
 |---|---|
@@ -99,11 +121,13 @@ These live in their own repos, each with its own engine and release cycle:
 ```bash
 npm install
 npm run validate   # frontmatter, naming, dead references, plugin manifest, script syntax
-npm test           # the engines, against fixtures
+npm test           # the engines and the workflow, against fixtures
 npm run check      # everything, as CI runs it
 ```
 
 `npm run validate` is opinionated on purpose: a skill whose description does not say *when to use it* never triggers, and a skill pointing at a file that does not exist wastes a real agent's turn discovering that. Both fail the build.
+
+Adding a skill: [CONTRIBUTING.md](./CONTRIBUTING.md) · writing one well: [AGENTS.md](./AGENTS.md).
 
 ## License
 
