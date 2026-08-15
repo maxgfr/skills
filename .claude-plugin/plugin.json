@@ -1,0 +1,23 @@
+{
+  "name": "maxgfr-skills",
+  "version": "0.1.0",
+  "description": "Process skills for agent-driven engineering. verify: prove that what an agent just built actually works — real gates, plan conformance, adversarial defect hunting, behaviour proof, and a fix loop that refuses to cheat.",
+  "author": {
+    "name": "maxgfr",
+    "url": "https://github.com/maxgfr"
+  },
+  "homepage": "https://github.com/maxgfr/skills",
+  "repository": "https://github.com/maxgfr/skills",
+  "license": "MIT",
+  "keywords": [
+    "verification",
+    "testing",
+    "code-review",
+    "quality-gate",
+    "engineering",
+    "skills"
+  ],
+  "skills": [
+    "./skills/verify"
+  ]
+}

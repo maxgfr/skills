@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate skills
+        run: node scripts/validate-skills.mjs
+
+      - name: Test engines
+        run: node --test "tests/**/*.test.mjs"
+
+      - name: Plugin version is in step with package.json
+        run: node scripts/sync-plugin-version.mjs --check
+
+      - name: The installer can read this repo
+        run: npx --yes skills@latest add ./ --list

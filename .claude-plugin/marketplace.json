@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "maxgfr",
+  "description": "maxgfr's process skills for agent-driven engineering — installable as a Claude Code plugin.",
+  "owner": {
+    "name": "maxgfr",
+    "url": "https://github.com/maxgfr"
+  },
+  "plugins": [
+    {
+      "name": "maxgfr-skills",
+      "source": "./",
+      "description": "Process skills for agent-driven engineering, starting with verify: prove that what was just built actually works.",
+      "homepage": "https://github.com/maxgfr/skills",
+      "license": "MIT",
+      "category": "engineering",
+      "keywords": [
+        "verification",
+        "testing",
+        "code-review",
+        "quality-gate",
+        "engineering"
+      ]
+    }
+  ]
+}
