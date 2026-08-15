@@ -182,10 +182,24 @@ if (existsSync(pluginPath)) {
 
 const marketplacePath = join(root, '.claude-plugin', 'marketplace.json')
 if (existsSync(marketplacePath)) {
+  let marketplace = null
   try {
-    JSON.parse(readFileSync(marketplacePath, 'utf8'))
+    marketplace = JSON.parse(readFileSync(marketplacePath, 'utf8'))
   } catch (err) {
     fail(marketplacePath, `is not valid JSON: ${err.message}`)
+  }
+  // The plugin's name is the namespace its skills are invoked under
+  // (`<plugin>:<skill>`). A marketplace advertising a different name installs
+  // nothing, and the failure surfaces only when a user tries it.
+  if (marketplace && existsSync(pluginPath)) {
+    const pluginName = JSON.parse(readFileSync(pluginPath, 'utf8')).name
+    const advertised = (marketplace.plugins || []).map((p) => p.name)
+    if (!advertised.includes(pluginName)) {
+      fail(
+        marketplacePath,
+        `advertises ${JSON.stringify(advertised)} but plugin.json is named "${pluginName}".`,
+      )
+    }
   }
 }
 

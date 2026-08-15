@@ -1,7 +1,7 @@
 {
-  "name": "maxgfr-skills",
+  "name": "maxgfr",
   "version": "0.1.0",
-  "description": "Process skills for agent-driven engineering. verify: prove that what an agent just built actually works — real gates, plan conformance, adversarial defect hunting, behaviour proof, and a fix loop that refuses to cheat.",
+  "description": "My agent skills — process skills that change how an agent works. Installs its skills under the maxgfr: namespace, so verify is invoked as maxgfr:verify.",
   "author": {
     "name": "maxgfr",
     "url": "https://github.com/maxgfr"

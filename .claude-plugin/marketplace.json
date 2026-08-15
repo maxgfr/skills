@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
-  "name": "maxgfr",
+  "name": "maxgfr-skills",
   "description": "maxgfr's process skills for agent-driven engineering — installable as a Claude Code plugin.",
   "owner": {
     "name": "maxgfr",
@@ -8,9 +8,9 @@
   },
   "plugins": [
     {
-      "name": "maxgfr-skills",
+      "name": "maxgfr",
       "source": "./",
-      "description": "Process skills for agent-driven engineering, starting with verify: prove that what was just built actually works.",
+      "description": "My agent skills, starting with verify: prove that what an agent just built actually works. Skills land under the maxgfr: namespace.",
       "homepage": "https://github.com/maxgfr/skills",
       "license": "MIT",
       "category": "engineering",

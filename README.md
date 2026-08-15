@@ -18,10 +18,12 @@ npx skills add maxgfr/skills
 
 ```
 /plugin marketplace add maxgfr/skills
-/plugin install maxgfr-skills
+/plugin install maxgfr
 ```
 
 Pick one. Installing both leaves you with every skill twice.
+
+The two paths name the skills differently, and that is the plugin's doing rather than a setting: a plugin namespaces what it ships, so `verify` is invoked as **`/maxgfr:verify`**. The `npx` path copies the files into `.claude/skills/`, where the same skill is plain **`/verify`**. Both run the identical skill; only the name you type changes.
 
 [skills.sh](https://skills.sh) builds its directory from recorded installs, so the listing for this repo appears on its own once there are some. Neither command depends on it — `npx skills add` reads the repository directly.
 
