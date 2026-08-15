@@ -3,7 +3,7 @@
 // trigger check only accepted one phrasing, so it failed skills that route fine.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { LISTING_CAP, TRIGGER } from '../scripts/validate-skills.mjs'
+import { LISTING_CAP, TRIGGER, extractReferences } from '../scripts/validate-skills.mjs'
 
 test('the cap matches what Claude Code actually truncates at', () => {
   // https://code.claude.com/docs/en/skills — the listing caps the combined
@@ -22,6 +22,22 @@ test('a description routes if it says when to invoke, however it is phrased', ()
     'Reads the board when the user asks what is in progress.',
   ]
   for (const d of routing) assert.ok(TRIGGER.test(d), `should route: ${d}`)
+})
+
+test('a path nested under another directory is not read as a skill-relative one', () => {
+  // `.github/scripts/render.mjs` is correct as written. Capturing the bare
+  // `scripts/render.mjs` out of it reports a missing file that is right there.
+  const refs = extractReferences('run `node .github/scripts/render-cv-pdf.mjs --out ./tmp`')
+  assert.ok(!refs.has('scripts/render-cv-pdf.mjs'), [...refs].join(', '))
+})
+
+test('genuinely skill-relative paths are still collected', () => {
+  const refs = extractReferences(
+    'Read references/lanes.md first, then `scripts/detect-gates.mjs`, then [the loop](references/fix-loop.md).',
+  )
+  assert.ok(refs.has('references/lanes.md'))
+  assert.ok(refs.has('scripts/detect-gates.mjs'))
+  assert.ok(refs.has('references/fix-loop.md'))
 })
 
 test('a description that only says what it does does not route', () => {

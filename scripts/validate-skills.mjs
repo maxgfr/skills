@@ -23,6 +23,22 @@ export const LISTING_CAP = 1536
 // several ways; only demanding "Use when" flags perfectly good skills.
 export const TRIGGER =
   /\buse\s+(when|this|for)\b|\btriggers?\b\s*[:—-]|\binvoke\s+(when|this|it|without)\b|\bwhen the user\b|\buse it when\b|\bfor when\b/i
+// Paths a SKILL.md points at, which must resolve inside the skill directory.
+// The lookbehind matters: without it `.github/scripts/build.mjs` yields a bare
+// `scripts/build.mjs`, which is then looked for inside the skill and reported
+// missing — flagging a path that is perfectly correct as written.
+export function extractReferences(body) {
+  const refs = new Set()
+  for (const m of body.matchAll(/\]\(([^)#]+\.(?:md|mjs|js|sh|json))\)/g)) refs.add(m[1])
+  for (const m of body.matchAll(/`((?:references|scripts|workflows|assets)\/[^`\s]+)`/g))
+    refs.add(m[1])
+  for (const m of body.matchAll(
+    /(?<![\w/.-])((?:references|scripts|workflows)\/[A-Za-z0-9._-]+\.(?:md|mjs))\b/g,
+  ))
+    refs.add(m[1])
+  return refs
+}
+
 const problems = []
 const checked = []
 
@@ -127,15 +143,7 @@ function main() {
         )
     }
 
-    // Referenced files must exist.
-    const referenced = new Set()
-    for (const m of body.matchAll(/\]\(([^)#]+\.(?:md|mjs|js|sh|json))\)/g)) referenced.add(m[1])
-    for (const m of body.matchAll(/`((?:references|scripts|workflows|assets)\/[^`\s]+)`/g))
-      referenced.add(m[1])
-    for (const m of body.matchAll(
-      /\b((?:references|scripts|workflows)\/[A-Za-z0-9._-]+\.(?:md|mjs))\b/g,
-    ))
-      referenced.add(m[1])
+    const referenced = extractReferences(body)
 
     for (const ref of referenced) {
       if (/^https?:/.test(ref)) continue
