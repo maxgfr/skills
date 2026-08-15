@@ -1,7 +1,5 @@
 # skills
 
-[![skills.sh](https://skills.sh/b/maxgfr/skills)](https://skills.sh/maxgfr/skills)
-
 My agent skills. One install, one place to keep them.
 
 They are process skills: they change how an agent works rather than what it knows. Small, composable, and meant to be hacked on — install them, read them, make them yours.
@@ -24,6 +22,8 @@ npx skills add maxgfr/skills
 ```
 
 Pick one. Installing both leaves you with every skill twice.
+
+[skills.sh](https://skills.sh) builds its directory from recorded installs, so the listing for this repo appears on its own once there are some. Neither command depends on it — `npx skills add` reads the repository directly.
 
 Installing takes the whole set, or pick what you want:
 
