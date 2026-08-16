@@ -45,8 +45,9 @@ npx skills add maxgfr/skills --skill verify  # take one
 ### verify
 
 ```
-/verify              # verify → fix the blockers → re-verify (default)
-/verify light        # the cheap tier — one skeptic, 2 lenses, no behaviour proof
+/verify              # gates only → fix the blockers → re-verify (default, 1 agent)
+/verify light        # + a 2-lens defect hunt, one skeptic per claim
+/verify normal       # + plan conformance and behaviour proof, panels on blockers
 /verify deep         # every lens, panels throughout, red-green audit
 /verify report       # read-only verdict, no writes
 /verify main         # explicit fixed point
@@ -54,13 +55,23 @@ npx skills add maxgfr/skills --skill verify  # take one
 
 A run costs agents, and most of them are skeptics — one per candidate finding,
 a panel per blocking one. More lenses produce more candidates, which produce
-more skeptics, so the two multiply. The tier is the dial: roughly 8 agents at
-`light`, 18 at the default, 40 at `deep`. `light` trades away the panel, so the
-verdict line names the tier — a `PASS` at `light` is not a `PASS` at `deep`.
+more skeptics, so the two multiply. The tier is the dial: **1 agent** by
+default, ~8 at `light`, ~18 at `normal`, ~40 at `deep`.
+
+**The default runs the gates and nothing else.** It produces no model-authored
+finding, so there is nothing to refute and nothing to be wrong about — a green
+`/verify` means the commands passed, not that the code is right. Nothing read
+the diff, nothing checked the plan, nothing was run to prove it works. It is not
+a merge gate; step up a tier for that. The verdict line always names the tier,
+so a cheap PASS can never be read as a thorough one.
+
 What no tier touches: the gates always run, and every candidate still faces at
 least one skeptic.
 
-It runs four lanes in parallel, in sub-agents, so the noise never reaches your session:
+Every stage runs on your session's model by default — a verification is never
+spawned on a bigger model than the work that produced it.
+
+At `normal` and above it runs four lanes in parallel, in sub-agents, so the noise never reaches your session:
 
 - **Gates** — the repo's real commands. Not the ones an agent imagines: the ones derived from your lockfile, your manifests, and your CI workflow, because the CI is what actually defines green.
 - **Plan conformance** — every clause of the plan it was given, marked implemented / partial / missing / contradicted, plus anything in the diff that nobody asked for. Code that exists but is never called is `partial`, not done.
@@ -77,11 +88,17 @@ Three laws hold the whole thing up:
 
 Output is a compact verdict — `PASS`, `FAIL`, or `UNPROVEN` when nothing broke because nothing was actually checked — an evidence table, ranked findings with concrete failure scenarios, and an explicit list of what could **not** be verified, including any lane that errored. Full detail goes to `.claude/verify/<timestamp>/`.
 
-Every stage's model is configurable. The default split follows what each stage is: **Fable is the scaffolding** — it decides what gets verified and writes down what happened — and **Opus does the verifying**. A cheap model in the lanes saves nothing, because a wrong finding costs a fix round, a re-verification and your attention.
+Every stage's model is configurable, and by default every stage is the same one:
+whatever your session is running. Pinning is opt-in. The pin worth knowing is the
+**scaffolding split** — the planner decides what gets verified and the reporter
+writes down what happened, so both can drop to a cheap model without losing
+anything. Pinning the finders or the judges *down* is the false economy: a wrong
+finding costs a fix round, a re-verification and your attention.
 
 ```json
 {
-  "models": { "planner": "fable", "reporter": "fable", "finders": "opus", "judges": "opus" },
+  "tier":   "normal",
+  "models": { "planner": "fable", "reporter": "fable" },
   "lanes":  { "behavior": "full" },
   "loop":   { "max_iterations": 3, "fix_severity": "blocking" }
 }

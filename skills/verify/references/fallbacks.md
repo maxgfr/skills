@@ -1,6 +1,9 @@
-# Execution tiers
+# Host tiers
 
-The laws are the same at every tier. What changes is how much of the noise reaches your context.
+How much of the machinery the host can run. Distinct from the **cost tiers**
+(`ultralight` · `light` · `normal` · `deep`), which decide how much verification
+you asked for; these decide where it executes. The laws are the same at every
+one. What changes is how much of the noise reaches your context.
 
 ## Tier 1 — Workflow (Claude Code)
 
@@ -9,18 +12,28 @@ Workflow({
   scriptPath: "<skill dir>/workflows/verify.mjs",
   args: {
     mode,        // "loop" | "report"
+    tier,        // the cost tier name — the report has to state which one ran
     cwd,         // repo root
     diffCmd,     // the pinned delta command
     untracked,   // ?? paths from git status --porcelain — they are in no diff
     planPath,    // the promise; planText optional, the matrix agent will read the file
-    gates,       // detect-gates output, already filtered by gates.extra / gates.skip
-    config,      // fully resolved: models, effort, lanes, loop, finders
+    gates,       // detect-gates output VERBATIM — the object, not its .gates array
+    config,      // fully resolved: models, effort, lanes, judges, loop, finders
     reportDir,   // <report.dir>/<YYYYMMDD-HHMMSS>, computed in Phase 0
     baseline,    // git stash create output, for the forbidden-repairs guard
     skillDir     // so the workflow can invoke this skill's scripts
   }
 })
 ```
+
+`gates` is the detector's whole output object. The workflow reads `gates.gates`
+itself; handing it the bare array, or a wrapper of your own, makes the gates lane
+silently find nothing and the run returns a verdict over zero executed commands.
+
+The return value carries `report_path`, which is **`null`** when nothing survived
+and no lane died — the workflow spends no agent transcribing an empty run. Write
+the short report yourself in that case, and never print a path to a file nobody
+wrote. `residual_risk` on the same object names the lanes that never ran.
 
 Everything the lanes need must be **resolved** before it goes in. The workflow is not the config resolver for its own inputs — it receives values, not policy.
 

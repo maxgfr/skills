@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Prove that work just produced actually works — run the repo's real gates, check the diff against the plan it promised, hunt defects with adversarial verification, and run the thing for real. Use when an implementation, branch or PR needs checking before it is called done; when about to claim something is complete, fixed or passing; when the user says "verify", "vérifie", "check my work", "did that actually work", "do another pass", or asks for a second opinion on work you just did. Fixes the blockers in a bounded loop by default, and refuses repairs that only silence the checker (skipped tests, @ts-ignore, edited CI). Report-only mode available.
+description: Prove that work just produced actually works, and fix what it finds. By default it runs the repo's real gates — the commands your lockfile, manifests and CI actually define — and rules on the exit codes; ask for a deeper tier and it also checks the diff against the plan it promised, hunts defects with adversarial verification, and runs the thing for real. Use when an implementation, branch or PR needs checking before it is called done; when about to claim something is complete, fixed or passing; when the user says "verify", "vérifie", "check my work", "did that actually work", "do another pass", or asks for a second opinion on work you just did. Fixes the blockers in a bounded loop, and refuses repairs that only silence the checker (skipped tests, @ts-ignore, edited CI). Report-only mode available.
 ---
 
 # verify
@@ -19,37 +19,36 @@ All paths below are relative to this skill's directory.
 
 Violating the letter of a law is violating its spirit.
 
-## Modes
+## Modes and tiers
 
-| Invocation | Behaviour |
-|---|---|
-| `/verify` | **Default.** Verify, fix the blockers, re-verify. Bounded loop (3 iterations), then a fresh full gate run. |
-| `/verify report` | Read-only. Verdict and findings, zero writes. Follow with "fix" to apply the blockers once. |
-| `/verify <ref>` | Same, with an explicit fixed point (`main`, a SHA, `HEAD~3`). |
-| `/verify --behavior full` | Adds the red-green audit of produced tests. Slower, catches tests that never could fail. |
+Every mode verifies, fixes the blockers in a bounded loop, then re-verifies. What
+the tier buys is how much gets verified — and the cost is agents, most of them
+skeptics: one per candidate finding, a panel per blocking one. More lenses
+produce more candidates, which produce more skeptics, so the two multiply.
 
-## Tiers
-
-A run costs agents, and most of them are skeptics: one per candidate finding, a
-panel per blocking one. More lenses produce more candidates, which produce more
-skeptics — the two multiply, which is why an unbounded run gets expensive fast.
-
-| | Agents | Trade |
+| Invocation | Agents | What it does |
 |---|---|---|
-| `/verify light` | ~8 | 2 lenses, no spec lane, no behaviour proof, **one skeptic instead of a panel** |
-| `/verify` | ~18 | 4 lenses, behaviour proof, panel of three on blocking claims |
+| `/verify` | **1** | **Default.** Runs the repo's real gates, rules on the exit codes. Nothing else. |
+| `/verify light` | ~8 | + a 2-lens defect hunt, one skeptic per claim |
+| `/verify normal` | ~18 | + plan conformance and behaviour proof, panel of three on blockers |
 | `/verify deep` | ~40 | every lens, red-green audit, panels throughout |
+| `/verify report` | — | Read-only, any tier. Follow with "fix" to apply the blockers once. |
+| `/verify <ref>` | — | Explicit fixed point (`main`, a SHA, `HEAD~3`). |
 
-`light` trades away the panel: a wrong finding survives more often and a real
-one dies more often. **The report names the tier** — a `PASS` at `light` is not
-a `PASS` at `deep`, and must never be reported as one. Use `light` for a quick
-pass on a small diff, not to gate a merge.
+**The default does not hunt for bugs — it has no opinion to be wrong about.** It
+produces no model-authored finding, so there is nothing to refute. A green
+`/verify` means the commands passed, and that is all: nothing read the diff,
+nothing checked the plan, nothing was run to prove it works. **It is not a merge
+gate.** Step up a tier for that, and say which tier you ran. It also minimises
+*agents*, not wall-clock — with no planner to filter them it runs **every**
+detected gate, so an unrelated pre-existing failure fails the run and is reported
+as pre-existing rather than repaired.
 
-No tier turns the gates off, and none skips refutation. Laws 1 and 2 have no
-cheap variant: a run with no executed command is `UNPROVEN` at every tier, and
-a candidate nobody challenged is never reported as a finding.
+No tier turns the gates off, and none skips refutation: laws 1 and 2 have no
+cheap variant. **Every stage runs on your session's model by default** — nothing
+is spawned on a bigger model than the work you were doing.
 
-Tiers, per-stage models and panel sizes: `references/config.md`.
+Presets are data: `scripts/tiers.mjs`. Prose: `references/config.md`.
 
 ## Phase 0 — Pin it (do this yourself, in the main context)
 
@@ -64,8 +63,8 @@ Cheap, and it fails fast before any agent is spent.
    **Untracked files appear in no diff.** Always run `git status --porcelain` alongside the diff and pass the `??` paths to the lanes as whole-file additions — a brand-new module is invisible to `git diff` and is exactly where new defects live. Do not `git add -N` to force them into the diff: that mutates the index behind the user's back.
 2. **The promise.** In order: a path the user gave → the most recently modified plan file in `~/.claude/plans/` newer than the fixed point → `docs/plans/`, `docs/superpowers/plans/`, `specs/`, `.scratch/` → an issue referenced in the commits (`gh issue view`) → none, in which case the spec lane runs on intent inferred from the diff and **the report says so**.
 3. **The gates.** `node scripts/detect-gates.mjs --cwd <repo> --pretty`. Deterministic, no model. It reads lockfiles, manifests, and `.github/workflows/` — the CI is the repo's own definition of green.
-4. **The config.** Tier preset ← `~/.claude/verify.json` ← `<repo>/.claude/verify.json` ← flags. Resolve it here, into concrete values — the lanes receive resolved arguments, not a config object to re-interpret. That includes `gates.extra` / `gates.skip`, which you apply to the detected list before passing it on, and the tier, which you expand into `finders`, `lanes`, `judges` and `effort` using the table in `references/config.md`. Pass the tier name through as well: the report has to state which one ran.
-5. **The run directory.** `date +%Y%m%d-%H%M%S` → `<report.dir>/<timestamp>/`. Compute it now and pass it in; a fixed path means each run silently erases the last.
+4. **The config.** `node scripts/tiers.mjs <tier>` ← `~/.claude/verify.json` ← `<repo>/.claude/verify.json` ← flags. **Run the script**; transcribing the table by hand is how a `lanes` object loses a key — which leaves that lane **on** — or gains an empty `finders` array, which runs **all six** lenses. Resolve everything into concrete values here; the lanes receive values, not policy. Apply `gates.extra` / `gates.skip` to the detected list, and pass the tier name through: the report has to state which one ran. A bare word is a tier before it is a ref (`light`, `normal`, `deep`, `ultralight`, `report`); an ambiguous branch needs `--ref light`. **If the detector found no gate, do not run `ultralight`** — it would spend zero agents and report `UNPROVEN` over nothing. Escalate to `light` and say why.
+5. **The run directory.** `date +%Y%m%d-%H%M%S` → `<report.dir>/<timestamp>/`. Compute it now and pass it in; a fixed path means each run silently erases the last. Prune here too, deterministically — keep the `keep_runs` most recent directories and delete the rest. Pruning that depends on a model remembering to do it is pruning that stops happening.
 6. **The baseline for the fix loop.** `git stash create` (empty output means a clean tree — use `HEAD`). This dangling SHA is what the loop diffs against to prove it only made the repairs it claims. It touches no ref and no file.
 
 Stop here if the ref does not resolve or the diff is empty. Say so; do not invent work.
@@ -74,17 +73,21 @@ Stop here if the ref does not resolve or the diff is empty. Say so; do not inven
 
 Read `references/lanes.md` for what each lane does and the exact sub-agent briefs.
 
-| Phase | What | Default model |
+| Phase | What | Runs at |
 |---|---|---|
-| 1 · Matrix | Turn the plan + diff into a targeted verification matrix (`references/matrix.md`) | `fable` |
-| 2 · Lanes | **A** gates · **B** plan conformance · **C** defect hunt · **D** behaviour proof — in parallel, isolated | `opus` |
-| 3 · Judging | Refute every candidate finding (`references/judging.md`) | `opus` |
-| 4 · Verdict | Compact report up, full detail to disk | `fable` |
-| 5 · Loop | Fix blockers, re-run impacted gates, repeat (`references/fix-loop.md`) | `opus` |
+| 1 · Matrix | Turn the plan + diff into a targeted verification matrix (`references/matrix.md`) | `normal`+ |
+| 2 · Lanes | **A** gates — always · **B** plan conformance · **C** defect hunt · **D** behaviour proof — in parallel, isolated | per tier |
+| 3 · Judging | Refute every candidate finding (`references/judging.md`) | when there are candidates |
+| 4 · Verdict | Compact report up, full detail to disk | when there is detail |
+| 5 · Loop | Fix blockers, re-run impacted gates, repeat (`references/fix-loop.md`) | when something is broken |
 
-Fable is the scaffolding: it decides *what* gets verified and writes down *what happened*. Opus does the verifying. A cheap model in the lanes does not save anything — a wrong finding costs a fix round, a re-verification, and your attention.
+**Every stage inherits your session's model**; pinning is opt-in, and pinning the
+finders or judges *down* is the false economy — a wrong finding costs a fix
+round, a re-verification and your attention. With lanes B, C and D all off,
+Phase 1 is skipped entirely: the gates come straight from the detector and there
+is nothing for a planner to aim.
 
-**Execution tier — pick the highest one available:**
+**Host tier — pick the highest one available:**
 
 1. **Workflow** (Claude Code). Call `Workflow` with `scriptPath` pointing at `workflows/verify.mjs` and pass Phase 0's output as `args`. All the noise — test logs, file reads, finder chatter — stays inside the workflow; only the verdict comes back. This is the point of the skill: verification that does not cost you the context you were working in.
 2. **Parallel sub-agents.** No Workflow tool? Dispatch the same lanes as concurrent agents and aggregate. `references/fallbacks.md`.
@@ -126,12 +129,21 @@ Three verdicts, not two:
 
 Rules for this block: no adjectives, no "Great!", no summary of what the code does. Findings the skeptics killed are a count, not a list. Anything unverified is named in RESIDUAL RISK — silence there is a lie. **A lane that errored is named there too**: a lane that died found nothing because it never ran, which is not the same as a clean result.
 
-**The verdict line states the tier.** At `light` it also carries what the tier gave up, because that is the difference between "nothing is wrong" and "nothing cheap found anything":
+**The verdict line states the tier, and below `deep` a second line states what
+that tier did not do** — the only thing between a gates-only PASS and a reader
+who takes it for a full verification. Word it from `residual_risk` in the return
+value:
 
 ```
-VERDICT: PASS — 0 blocking   (3 candidates refuted)   tier: light
-  light: 2 lenses, one skeptic per claim, no behaviour proof. Not a merge gate.
+VERDICT: PASS — gates only   tier: ultralight
+  ultralight: no defect hunt, no plan check, nothing run to prove it works.
+  Every detected gate ran, unfiltered. Not a merge gate — /verify normal for that.
 ```
+
+**When `report_path` comes back `null`**, nothing survived and no lane died, so
+no agent was spent transcribing an empty run. Write the short version yourself in
+the run directory — verdict, tier, gate table, `residual_risk`. Never print a
+path to a file nobody wrote.
 
 ## Red flags
 

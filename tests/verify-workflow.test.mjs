@@ -11,6 +11,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { TIERS, resolveTier, DEFAULT_TIER } from '../skills/verify/scripts/tiers.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const root = resolve(here, '..')
@@ -54,10 +55,13 @@ const BASE_MATRIX = {
 }
 
 // Scripted agent: keyed on the label the workflow assigns each call.
-function makeAgent(script, calls) {
+function makeAgent(script, calls, seen = []) {
   return async (prompt, opts = {}) => {
     const label = opts.label || 'unlabelled'
     calls.push(label)
+    // Parallel to `calls` so the 16 tests that assert on labels stay untouched,
+    // while the model/effort assertions get what they need.
+    seen.push({ label, model: opts.model, effort: opts.effort })
     for (const [pattern, value] of Object.entries(script)) {
       if (label === pattern || label.startsWith(pattern)) {
         return typeof value === 'function' ? value(prompt, opts) : value
@@ -69,6 +73,7 @@ function makeAgent(script, calls) {
 
 function run(argsOverride, script) {
   const calls = []
+  const seen = []
   const args = {
     mode: 'report',
     cwd: '/repo',
@@ -84,11 +89,11 @@ function run(argsOverride, script) {
     },
     ...argsOverride,
   }
-  return compiled(args, makeAgent(script, calls), parallel, pipeline, () => {}, () => {}, {
+  return compiled(args, makeAgent(script, calls, seen), parallel, pipeline, () => {}, () => {}, {
     total: null,
     spent: () => 0,
     remaining: () => Infinity,
-  }).then((result) => ({ result, calls }))
+  }).then((result) => ({ result, calls, seen }))
 }
 
 test('a clean run passes', async () => {
@@ -400,4 +405,213 @@ test('a five-skeptic panel needs three survivors', async () => {
   assert.equal(calls.filter((c) => c.startsWith('judge:')).length, 5)
   assert.equal(result.counts.blocking, 1)
   assert.equal(result.refuted_count, 0)
+})
+
+// ---------------------------------------------------------------- tiers
+//
+// The presets live in scripts/tiers.mjs rather than in a Markdown table because
+// two of the workflow's guards punish a preset that is only nearly right, and
+// neither failure shows up in a reading of the resolved config.
+
+const DETECTED = {
+  gates: [{ id: 'test-1', kind: 'test', cmd: 'npm test', blocking: true, timeout_s: 300 }],
+}
+
+const FAILING_GATES = {
+  results: [
+    { id: 'test-1', cmd: 'npm test', status: 'fail', exit_code: 1, first_failing_lines: '1 failed' },
+  ],
+}
+
+const ultralightArgs = (extra = {}) => ({
+  tier: 'ultralight',
+  gates: DETECTED,
+  config: resolveTier('ultralight'),
+  ...extra,
+})
+
+test('an ultralight run spends exactly one agent', async () => {
+  // deepEqual, not a count: it proves in one line that no planner, no reporter,
+  // no finder and no skeptic ran, and it breaks the moment someone adds an
+  // unconditional agent() call. The script deliberately has no `matrix` key —
+  // makeAgent returns null for an unmatched label, so a resurrected planner
+  // would crash the run rather than quietly pass.
+  const { result, calls } = await run(ultralightArgs(), { gates: PASSING_GATES })
+  assert.deepEqual(calls, ['gates'])
+  assert.equal(result.verdict, 'PASS')
+  assert.equal(result.tier, 'ultralight')
+})
+
+test('a green run writes no report file and says so instead of naming one', async () => {
+  const { result } = await run(ultralightArgs(), { gates: PASSING_GATES })
+  assert.equal(result.report_path, null, 'a path here points at a file nobody wrote')
+  assert.ok(
+    result.residual_risk.some((r) => /defect hunt/.test(r)),
+    `lanes that never ran must be named: ${JSON.stringify(result.residual_risk)}`,
+  )
+})
+
+test('ultralight still repairs a red gate', async () => {
+  const { calls } = await run(
+    ultralightArgs({
+      mode: 'loop',
+      config: { ...resolveTier('ultralight'), loop: { enabled: true, max_iterations: 1 } },
+    }),
+    {
+      gates: FAILING_GATES,
+      'fix:': { fixed: true, files_touched: ['src/a.ts'], summary_one_line: 'fixed' },
+      guard: { verdict: 'CLEAN', violations: [] },
+      'regate:': { results: PASSING_GATES.results, findings: [{ id: 'F1', gone: true }] },
+      'final-gates': PASSING_GATES,
+      report: 'written',
+    },
+  )
+  assert.ok(!calls.includes('matrix'), 'the planner came back on the red path')
+  assert.ok(calls.includes('final-gates'), 'the fix loop needs matrix.gates to re-run')
+})
+
+test('the detected-gates wrapper object is unwrapped, not passed through', async () => {
+  // detect-gates.mjs returns {cwd, repo, gates, ci, notes}. Handing the wrapper
+  // to matrix.gates makes .length undefined, the gates lane never runs, and the
+  // run returns a verdict over zero executed commands — a silent no-op that
+  // reads like a real result.
+  const { result, calls } = await run(ultralightArgs(), { gates: PASSING_GATES })
+  assert.ok(calls.includes('gates'), 'the gates lane was skipped — matrix.gates was not an array')
+  assert.notEqual(result.verdict, 'UNPROVEN')
+})
+
+test('a gate that could not run is explained, never a bare FAIL', async () => {
+  const { result } = await run(ultralightArgs(), {
+    gates: {
+      results: [
+        {
+          id: 'test-1',
+          cmd: 'npm test',
+          status: 'not_run',
+          exit_code: null,
+          first_failing_lines: 'command not found',
+        },
+      ],
+    },
+    report: 'written',
+  })
+  assert.equal(result.verdict, 'FAIL')
+  assert.ok(
+    result.findings.length > 0,
+    'FAIL with zero findings is the emptiest possible failure — name the command',
+  )
+  assert.match(result.findings[0].defect, /could not run/)
+})
+
+test('two red gates are two findings, not one', async () => {
+  // Gate candidates used to share file:'gate', so dedupe collapsed every gate
+  // failure into one — and the fix round then read "fix these defects in gate".
+  const { result } = await run(
+    {
+      tier: 'ultralight',
+      gates: {
+        gates: [
+          { id: 'test-1', cmd: 'npm test', blocking: true, timeout_s: 300 },
+          { id: 'tc-1', cmd: 'npm run typecheck', blocking: true, timeout_s: 300 },
+        ],
+      },
+      config: resolveTier('ultralight'),
+    },
+    {
+      gates: {
+        results: [
+          { id: 'test-1', cmd: 'npm test', status: 'fail', exit_code: 1, first_failing_lines: 'x' },
+          { id: 'tc-1', cmd: 'npm run typecheck', status: 'fail', exit_code: 2, first_failing_lines: 'y' },
+        ],
+      },
+      report: 'written',
+    },
+  )
+  assert.equal(result.findings.length, 2, JSON.stringify(result.findings.map((f) => f.defect)))
+})
+
+test('a non-blocking gate does not sink the verdict on its own', async () => {
+  const { result } = await run(
+    {
+      tier: 'ultralight',
+      gates: {
+        gates: [
+          { id: 'test-1', cmd: 'npm test', blocking: true, timeout_s: 300 },
+          { id: 'e2e-1', cmd: 'npm run test:e2e', blocking: false, timeout_s: 900 },
+        ],
+      },
+      config: resolveTier('ultralight'),
+    },
+    {
+      gates: {
+        results: [
+          { id: 'test-1', cmd: 'npm test', status: 'pass', exit_code: 0 },
+          { id: 'e2e-1', cmd: 'npm run test:e2e', status: 'fail', exit_code: 1, first_failing_lines: 'flaky' },
+        ],
+      },
+      report: 'written',
+    },
+  )
+  assert.equal(result.verdict, 'PASS', 'a non-blocking e2e must not turn the run red by itself')
+  assert.ok(result.findings.length > 0, 'but its failure is still reported')
+})
+
+test('every tier names all four lanes — an unnamed lane is ON', async () => {
+  for (const [name, preset] of Object.entries(TIERS)) {
+    assert.deepEqual(
+      Object.keys(preset.lanes).sort(),
+      ['behavior', 'defects', 'gates', 'spec'],
+      `${name} leaves a lane unnamed; note a MISSING behavior key resolves to "quick", not "off"`,
+    )
+  }
+})
+
+test('no tier ships an empty finders array — empty means all six lenses', async () => {
+  for (const [name, preset] of Object.entries(TIERS)) {
+    assert.ok(preset.finders.length > 0, `${name} would silently run every lens`)
+  }
+})
+
+test('each tier spawns the lenses it promises', async () => {
+  const expected = { ultralight: 0, light: 2, normal: 4, deep: 6 }
+  for (const [name, count] of Object.entries(expected)) {
+    const { calls } = await run(
+      { tier: name, gates: DETECTED, config: resolveTier(name) },
+      {
+        matrix: { ...BASE_MATRIX, behaviors: [] },
+        gates: PASSING_GATES,
+        'find:': { findings: [] },
+        spec: { verdicts: [], out_of_scope: [] },
+        report: 'written',
+      },
+    )
+    assert.equal(calls.filter((c) => c.startsWith('find:')).length, count, `${name} lens count`)
+  }
+})
+
+test('by default no stage is pinned to a named model', async () => {
+  const { seen } = await run(ultralightArgs(), { gates: PASSING_GATES })
+  assert.ok(
+    seen.every((o) => o.model === undefined),
+    `pinned by default: ${JSON.stringify(seen.filter((o) => o.model))}`,
+  )
+})
+
+test('pinning one stage reaches that stage and no other', async () => {
+  const { seen } = await run(
+    {
+      tier: 'light',
+      gates: DETECTED,
+      config: { ...resolveTier('light'), models: { finders: 'fable' } },
+    },
+    {
+      matrix: { ...BASE_MATRIX, behaviors: [] },
+      gates: PASSING_GATES,
+      'find:': { findings: [] },
+      report: 'written',
+    },
+  )
+  const finders = seen.filter((o) => o.label.startsWith('find:'))
+  assert.ok(finders.length > 0 && finders.every((o) => o.model === 'fable'))
+  assert.ok(seen.filter((o) => o.label === 'gates').every((o) => o.model === undefined))
 })

@@ -2,7 +2,9 @@
 
 A generic verification pass asks generic questions and gets generic answers. The matrix is the step that makes the rest of the run *about this change*: it turns the plan and the diff into a specific list of things to prove, before anything expensive runs.
 
-It is cheap on purpose. The planner reads metadata — the plan text, `git diff --stat`, the file list, the detected gates — not the code. Default model `fable`.
+It is cheap on purpose. The planner reads metadata — the plan text, `git diff --stat`, the file list, the detected gates — not the code. It runs on the session's model like every other stage; it is also the stage that gains most from being pinned down to a cheap one, since it transcribes structure and decides nothing.
+
+**This phase does not run at all when lanes B, C and D are off** — at the `ultralight` tier, or whenever you disable those three by hand. The matrix exists to aim those lanes; with only the gates left, the commands come straight from `detect-gates.mjs` and a planner would be an agent spent copying a list. The trade is that nothing filters the detected gates down to the diff: every one of them runs.
 
 ## Input to the planner
 

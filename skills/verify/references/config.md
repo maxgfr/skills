@@ -13,33 +13,57 @@ A run's cost is agents, and the agents are mostly skeptics: every candidate
 finding gets one, and a blocking claim gets a panel. More finder lenses means
 more candidates means more skeptics, so the two multiply.
 
-Phase 0 resolves the tier name into the concrete values below, then applies the
-config files and flags on top. Anything you set explicitly wins over the tier.
+**The presets live in `scripts/tiers.mjs`, not in this table.** Phase 0 runs
+`node scripts/tiers.mjs <name>` and merges the config files and flags on top;
+anything you set explicitly wins. The table below is a description of that
+script, and the script is what runs.
 
-| | `light` | `normal` (default) | `deep` |
-|---|---|---|---|
-| `finders` (lenses) | 2 | 4 | 6 |
-| `lanes.spec` | `false` | `true` | `true` |
-| `lanes.behavior` | `"off"` | `"quick"` | `"full"` |
-| `judges.panel_blocking` | 1 | 3 | 3 |
-| `effort.finders` / `.judges` | `medium` | `high` | `high` |
-| Agents on a mid-size diff | ~8 | ~18 | ~40 |
+| | `ultralight` (default) | `light` | `normal` | `deep` |
+|---|---|---|---|---|
+| `lanes.gates` | `true` | `true` | `true` | `true` |
+| `lanes.spec` | `false` | `false` | `true` | `true` |
+| `lanes.defects` | `false` | `true` | `true` | `true` |
+| `lanes.behavior` | `"off"` | `"off"` | `"quick"` | `"full"` |
+| lenses actually run | 0 | 2 | 4 | 6 |
+| `judges.panel_blocking` | — | 1 | 3 | 3 |
+| Agents, green run | **1** | ~8 | ~18 | ~40 |
+| Agents, one red gate repaired | ~5 | | | |
 
 ```json
 { "tier": "light" }
 ```
 
-**`light` gives up the panel.** One skeptic instead of three on a blocking
-claim means a wrong finding survives more often, and a real one dies more
-often. That is the trade, and the report names the tier so a `PASS` at `light`
-is never read as a `PASS` at `deep`. Use it for a quick pass on a small diff;
-do not gate a merge on it.
+### `ultralight` — the default
 
-**`light` never turns the gates off.** Law 1 does not have a cheap variant — a
-run with no executed command reports `UNPROVEN`, whatever the tier.
+Gates only. It runs the repo's real commands and rules on the exit codes. It
+produces **no model-authored finding**, so there is nothing to refute and law 2
+holds by construction. It is an honest gate runner, not a degraded defect hunt.
 
-The tier presets are a starting point, not a straitjacket. `light` plus the one
-lane you actually care about is usually the right cheap run:
+Two consequences worth stating plainly:
+
+- **The default is not a merge gate.** Nothing reads the diff, nothing checks
+  the plan, nothing is run to prove it works. Step up a tier for that.
+- **It minimises agents, not wall-clock.** With no planner there is nothing to
+  filter the detected gates down to the diff, so `ultralight` runs *every* gate
+  `detect-gates.mjs` found — including e2e at a 900-second timeout and up to six
+  commands lifted from your CI workflow. On a README-only diff it will still run
+  your test suite, and an unrelated pre-existing failure will fail the run. That
+  is reported as pre-existing, never repaired.
+
+When the detector finds no gate at all, `ultralight` would spend zero agents and
+report `UNPROVEN` over nothing. Phase 0 escalates to `light` instead.
+
+### `light` gives up the panel
+
+One skeptic instead of three on a blocking claim means a wrong finding survives
+more often, and a real one dies more often. That is the trade, and the report
+names the tier so a `PASS` at `light` is never read as a `PASS` at `deep`.
+
+**No tier turns the gates off, and none skips refutation.** Laws 1 and 2 have no
+cheap variant: a run with no executed command reports `UNPROVEN` at every tier,
+and both panel settings floor at 1.
+
+The presets are a starting point, not a straitjacket:
 
 ```
 /verify light --lanes gates,defects --lenses wiring,leftovers
@@ -47,33 +71,34 @@ lane you actually care about is usually the right cheap run:
 
 ## Defaults
 
-## Defaults
-
-Shown at `normal`.
+Shown at `ultralight`, the default.
 
 ```json
 {
-  "tier": "normal",
+  "tier": "ultralight",
   "models": {
-    "planner":  "fable",
-    "reporter": "fable",
-    "gates":    "opus",
-    "spec":     "opus",
-    "finders":  "opus",
-    "judges":   "opus",
-    "fixer":    "opus"
+    "planner":  "inherit",
+    "reporter": "inherit",
+    "gates":    "inherit",
+    "spec":     "inherit",
+    "finders":  "inherit",
+    "judges":   "inherit",
+    "fixer":    "inherit"
   },
-  "effort": { "gates": "low", "planner": "low", "finders": "high", "judges": "high" },
-  "lanes":  { "gates": true, "spec": true, "defects": true, "behavior": "quick" },
-  "judges": { "panel": 1, "panel_blocking": 3 },
+  "effort": { "gates": "low", "planner": "low", "finders": "medium", "judges": "medium" },
+  "lanes":  { "gates": true, "spec": false, "defects": false, "behavior": "off" },
+  "judges": { "panel": 1, "panel_blocking": 1 },
   "loop":   { "enabled": true, "max_iterations": 3, "fix_severity": "blocking" },
   "gates":  { "extra": [], "skip": [] },
-  "finders": ["correctness", "failure-handling", "wiring", "leftovers"],
+  "finders": ["correctness"],
   "report": { "dir": ".claude/verify", "keep_runs": 10 }
 }
 ```
 
-The full lens set — `deep` — adds `state-async` and `trust-input`.
+`finders` is non-empty even though `lanes.defects` is `false`: an **empty**
+`finders` array does not mean zero lenses, it makes the workflow fall back to
+all six. Only `lanes.defects` turns the lane off. `scripts/tiers.mjs` holds this
+invariant and a test enforces it.
 
 ## Judges
 
@@ -90,21 +115,39 @@ is not configurable, and a candidate nobody challenged is not a finding.
 
 ## Models
 
-The split follows what each stage actually is.
+**By default every stage runs on the same model: the one your session is already
+running.** No stage is pinned, nothing is spawned on a bigger model than the work
+you were doing when you asked. That is the predictable option, and it is the one
+you get if you never touch this key.
 
-**Fable is the scaffolding.** It says *what* gets verified and writes down *what happened* — the matrix in Phase 1 and the report in Phase 4. Both read metadata and transcribe structure; neither decides whether anything is broken. That is the whole of the cheap tier.
-
-**Opus does the verifying.** Running the gates and reading their output, judging the plan clause by clause, hunting defects, refuting them, repairing them. A cheap model here does not save money — it produces findings that are wrong in both directions, and every wrong finding costs a fix round, a re-verification, and your attention. The expensive stage is the one you have to redo.
-
-`inherit` uses the session's model instead of a named one; use it if you would rather verify with whatever you are already running:
+Pin a stage by naming a model. It applies to that stage and nothing else:
 
 ```json
-{ "models": { "finders": "inherit", "judges": "inherit" } }
+{ "models": { "planner": "fable", "reporter": "fable" } }
 ```
 
-Per-stage effort maps to the agent's reasoning effort where the host supports it (`low` · `medium` · `high` · `xhigh` · `max`).
+That particular pair is the **scaffolding split**, and it is the pin worth
+knowing. The planner says *what* gets verified and the reporter writes down
+*what happened*; both read metadata and transcribe structure, and neither decides
+whether anything is broken. Moving them to a cheap model costs nothing.
 
-On hosts without model selection, model names are ignored and every stage runs on whatever the host provides. Nothing else changes.
+The inverse — pinning `finders` or `judges` *down* — is the one to avoid. A wrong
+finding costs a fix round, a re-verification and your attention, so the cheap
+stage becomes the expensive one. If you want more there, pin *up*:
+
+```json
+{ "models": { "finders": "opus", "judges": "opus" } }
+```
+
+`inherit` is the explicit spelling of the default. Per-stage effort maps to the
+agent's reasoning effort where the host supports it (`low` · `medium` · `high` ·
+`xhigh` · `max`).
+
+The forbidden-repairs guard runs at `effort: "low"` and is the one stage you
+cannot tune — it transcribes a script's JSON output and has no judgement to make.
+
+On hosts without model selection, model names are ignored and every stage runs on
+whatever the host provides. Nothing else changes.
 
 ## Lanes
 
@@ -138,15 +181,16 @@ is `/verify report` as a permanent setting. `fix_severity` accepts `blocking` (d
 Flags win over every file.
 
 ```
-/verify                         # loop mode, normal tier
-/verify light                   # the cheap tier — see Tiers
-/verify deep                    # every lens, full behaviour proof
+/verify                         # loop mode, ultralight — gates only
+/verify light                   # + a 2-lens defect hunt
+/verify normal                  # + plan conformance and behaviour proof
+/verify deep                    # every lens, panels, red-green audit
 /verify report                  # read-only
 /verify main                    # explicit fixed point
 /verify --behavior full         # add the red-green audit
-/verify --panel 1               # judges.panel_blocking
+/verify --panel 3               # judges.panel_blocking
 /verify --finders sonnet        # one stage's model (models.finders)
-/verify --model inherit         # every stage not explicitly pinned in config
+/verify --model fable           # pin EVERY stage, overriding the config files
 /verify --max-iterations 5
 /verify --skip lint,e2e
 /verify --lanes gates,defects   # only these
@@ -154,6 +198,9 @@ Flags win over every file.
 ```
 
 `--finders` sets a **model** (`models.finders`); `--lenses` sets **which lenses run** (the top-level `finders` array). Two different keys, deliberately different flags.
+
+**A tier name is resolved before a git ref.** `/verify light` is a tier, not the
+branch `light`. Pass an ambiguous ref explicitly — `/verify --ref light`.
 
 ## What verify never does
 
@@ -172,6 +219,16 @@ The `<YYYYMMDD-HHMMSS>` segment is computed in Phase 0 and passed in, so consecu
 | `matrix.json` | The verification matrix the run was built from |
 | `gates.json` | Raw output of `detect-gates.mjs` |
 
-Add `.claude/verify/` to `.gitignore`. Runs beyond `keep_runs` are pruned oldest-first.
+**A run with nothing to report writes none of them.** When no finding survived
+and no lane died, the verdict, the tier and the gate table are the whole report,
+so the workflow returns `report_path: null` and the main context writes a short
+`REPORT.md` itself rather than spend an agent transcribing an empty run. This is
+keyed on evidence, not on the tier — a green `deep` run has as little to say as a
+green `ultralight` one. The four-file set above is what you get whenever there
+*is* something to write down.
+
+Add `.claude/verify/` to `.gitignore`. Runs beyond `keep_runs` are pruned
+oldest-first, in Phase 0, deterministically — pruning does not depend on a model
+remembering to do it.
 
 The point of writing all of this down: a later session reads the file instead of re-deriving the whole run, and you can audit a skeptic that killed something it should not have.

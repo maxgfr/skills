@@ -23,7 +23,9 @@ const loopCfg = cfg.loop || { enabled: true, max_iterations: 3, fix_severity: 'b
 const judgeCfg = { panel: 1, panel_blocking: 3, ...(cfg.judges || {}) }
 // Named so the report can state it. A PASS at `light` bought less evidence than
 // a PASS at `deep`, and a report that does not say which one ran hides that.
-const tier = A.tier || cfg.tier || 'normal'
+// Must match DEFAULT_TIER in scripts/tiers.mjs. The workflow body runs in a
+// wrapper with no module resolution, so it cannot import the constant.
+const tier = A.tier || cfg.tier || 'ultralight'
 const mode = A.mode || 'loop'
 const diffCmd = A.diffCmd || 'git diff HEAD'
 const cwd = A.cwd || '.'
@@ -290,10 +292,43 @@ const GUARD_SCHEMA = {
 
 // ---------------------------------------------------------- phase 1: matrix
 
-phase('Matrix')
+// Hoisted above the matrix: whether the planner is worth spawning depends on it.
+const behaviorMode = lanes.behavior === undefined ? 'quick' : lanes.behavior
 
-const matrix = await agent(
-  `${CONTEXT}
+// The matrix exists to aim lanes B, C and D. With all three off, the only lane
+// left reads its commands straight from detect-gates.mjs, and the planner is an
+// agent spent to copy a list. Keyed on the lanes rather than on the tier name so
+// it stays correct when a flag turns a lane back on: `--behavior quick` over
+// ultralight needs a real matrix, and would otherwise iterate an empty
+// behaviours array and report nothing, which is silence, not a clean result.
+const synthesizeMatrix = lanes.spec === false && lanes.defects === false && behaviorMode === 'off'
+
+// detect-gates.mjs returns {cwd, repo, packageManager, gates, ci, notes} — the
+// ARRAY is A.gates.gates. Passing the wrapper object here makes .length
+// undefined, the gates lane never runs, and the run returns a verdict over zero
+// executed commands.
+const detectedGates = (A.gates && Array.isArray(A.gates.gates) ? A.gates.gates : []).map((g) => ({
+  id: g.id,
+  cmd: g.cmd,
+  why: 'detected',
+  blocking: g.blocking !== false,
+  timeout_s: g.timeout_s,
+}))
+
+if (!synthesizeMatrix) phase('Matrix')
+
+const matrix = synthesizeMatrix
+  ? {
+      synthesized: true,
+      // Not "inferred": nobody inferred anything. No promise was read.
+      promise_source: 'not_checked',
+      gates: detectedGates,
+      requirements: [],
+      behaviors: [],
+      risk_areas: [],
+    }
+  : await agent(
+      `${CONTEXT}
 
 You are building a verification matrix: the specific list of things this change must be proven to do. You read metadata, not source — keep it cheap.
 
@@ -317,11 +352,21 @@ Produce the matrix:
 - requirements: one per verifiable clause of the promise, quoting it VERBATIM in "quote". A clause with two verbs is two requirements.
 - behaviors: 2 to 5 claims that can be PROVEN BY RUNNING something. "how_to_prove" must be an executable procedure with real arguments, not a description. If a claim cannot be run, leave it out.
 - risk_areas: where a defect would be most costly or most likely — biggest hunk, time/money arithmetic, auth, concurrency, migrations, public interfaces.`,
-  { schema: MATRIX_SCHEMA, model: mdl('planner'), effort: eff('planner'), label: 'matrix', phase: 'Matrix' },
-)
+      {
+        schema: MATRIX_SCHEMA,
+        model: mdl('planner'),
+        effort: eff('planner'),
+        label: 'matrix',
+        phase: 'Matrix',
+      },
+    )
 
+// "0 requirements · 0 behaviours" would read as "the planner looked and found
+// nothing" — the opposite of what happened, which is that nobody looked.
 log(
-  `matrix: ${matrix.requirements.length} requirements · ${matrix.behaviors.length} behaviours · ${matrix.gates.length} gates · promise=${matrix.promise_source}`,
+  synthesizeMatrix
+    ? `matrix: skipped — gates only (${matrix.gates.length} detected, none filtered out)`
+    : `matrix: ${matrix.requirements.length} requirements · ${matrix.behaviors.length} behaviours · ${matrix.gates.length} gates · promise=${matrix.promise_source}`,
 )
 
 // ----------------------------------------------------------- phase 2: lanes
@@ -429,8 +474,7 @@ At most 8 findings, ranked. Under 400 words.`,
   }
 }
 
-// Lane D — behaviour proof
-const behaviorMode = lanes.behavior === undefined ? 'quick' : lanes.behavior
+// Lane D — behaviour proof (behaviorMode is resolved above, before the matrix)
 if (behaviorMode !== 'off') {
   for (const b of matrix.behaviors) {
     push('behavior', `prove:${b.id}`, () =>
@@ -524,14 +568,32 @@ laneResults.forEach((res, i) => {
 
 // Failed gates and missing requirements are findings too — they are evidence-backed,
 // so they enter the pool already carrying their proof.
+// Whether a gate's failure is allowed to turn the whole run red. Used both for
+// the severity of its finding and for gatesGreen, which must agree — otherwise a
+// non-blocking gate stops sinking the verdict one way and keeps sinking it the
+// other.
+const blockingById = new Map(matrix.gates.map((g) => [g.id, g.blocking !== false]))
+
 for (const g of gateResults) {
-  if (g.status === 'fail' || g.status === 'timeout') {
+  // `not_run` sinks gatesGreen below, so leaving it out of the pool produced a
+  // FAIL with zero findings and nothing to show — the emptiest possible
+  // failure, and the likeliest one on a repo whose dependencies are not
+  // installed. A gate that could not run is a finding that names the command.
+  if (g.status === 'fail' || g.status === 'timeout' || g.status === 'not_run') {
+    const couldNotRun = g.status === 'not_run'
     candidates.push({
-      file: 'gate',
+      // Keyed per gate: a shared `file` lets dedupe below collapse a red
+      // typecheck and a red test into one finding, and the fix round then reads
+      // "fix these defects in gate".
+      file: `gate:${g.id}`,
       line: 0,
-      defect: `Gate ${g.id} (${g.cmd}) ${g.status} with exit ${g.exit_code}`,
-      failure_scenario: (g.first_failing_lines || '').slice(0, 500),
-      severity: 'blocking',
+      defect: couldNotRun
+        ? `Gate ${g.id} could not run: \`${g.cmd}\``
+        : `Gate ${g.id} (${g.cmd}) ${g.status} with exit ${g.exit_code}`,
+      failure_scenario: couldNotRun
+        ? `\`${g.cmd}\` did not execute, so this gate proves nothing. ${(g.first_failing_lines || '').slice(0, 300)}`.trim()
+        : (g.first_failing_lines || '').slice(0, 500),
+      severity: blockingById.get(g.id) === false ? 'major' : 'blocking',
       from_gate: g.id,
       found_by: ['gates'],
     })
@@ -582,12 +644,26 @@ for (const rg of redGreen) {
   }
 }
 
+// An exit code is not an opinion, and a behaviour that was run and failed is not
+// an argument to be refuted. Declared here because dedupe below needs it, and a
+// const is not hoisted.
+const isMachineTruth = (f) => Boolean(f.from_gate || f.from_behavior)
+
 // Dedup: two lenses finding one bug is confidence, not two bugs.
+//
+// Machine truth is exempt. A gate result and a disproven behaviour are not
+// opinions that can agree with each other — they are separate executed
+// commands, each with its own exit code, and merging two of them destroys the
+// evidence for one.
 function dedupe(items) {
   const out = []
   for (const f of items) {
+    if (isMachineTruth(f)) {
+      out.push({ ...f })
+      continue
+    }
     const twin = out.find(
-      (o) => o.file === f.file && Math.abs((o.line || 0) - (f.line || 0)) <= 3,
+      (o) => !isMachineTruth(o) && o.file === f.file && Math.abs((o.line || 0) - (f.line || 0)) <= 3,
     )
     if (twin) {
       twin.found_by = [...new Set([...(twin.found_by || []), ...(f.found_by || [])])]
@@ -617,7 +693,6 @@ const ANGLES = [
 
 // Machine truth does not face a skeptic: an exit code is not an opinion, and a
 // behaviour that was run and failed is not an argument to be refuted.
-const isMachineTruth = (f) => Boolean(f.from_gate || f.from_behavior)
 const machineTruth = candidates.filter(isMachineTruth)
 const toJudge = candidates.filter((f) => !isMachineTruth(f))
 
@@ -730,11 +805,20 @@ const runState = {
   counts: counts(survivors),
 }
 
-await agent(
-  `Write this verification run to disk. Four files, nothing else, no commentary.
+// Nothing survived and no lane died, so there is no detail to write down: the
+// verdict, the tier and the gate table are the whole report, and the main
+// context writes those itself for free. Provably final here — with no
+// survivors, pending() is empty, the fix loop never starts, and nothing below
+// can change the outcome. Keyed on evidence rather than on the tier, because a
+// green `deep` run has just as little to say.
+const reportWorthWriting = survivors.length > 0 || laneFailures.length > 0
+
+if (reportWorthWriting)
+  await agent(
+    `Write this verification run to disk. Four files, nothing else, no commentary.
 
 1. ${reportDir}/REPORT.md — the full report in Markdown:
-   - Verdict line and counts.
+   - Verdict line and counts. State the tier (\`tier\` in the data below) on that line: a PASS at a cheap tier bought less evidence than a PASS at a deep one, and a report that does not say which ran hides that.
    - EVIDENCE: every gate as a row — id, command, status, exit code, and its first failing lines verbatim for anything that did not pass.
    - FINDINGS: every survivor, grouped blocking / major / minor, each with file:line, the defect, the failure scenario, the suggested fix, and which lenses found it.
    - REQUIREMENTS: the per-requirement verdict table, plus out-of-scope items.
@@ -752,8 +836,8 @@ Create the directory if needed. Report back only the four paths.
 
 DATA:
 ${JSON.stringify(runState).slice(0, 400000)}`,
-  { model: mdl('reporter'), effort: eff('reporter'), label: 'report', phase: 'Report' },
-)
+    { model: mdl('reporter'), effort: eff('reporter'), label: 'report', phase: 'Report' },
+  )
 
 // ------------------------------------------------------------ phase 5: fix
 
@@ -939,7 +1023,14 @@ Report each honestly. A command you did not run to completion is never "pass".`,
 }
 
 const finalBlocking = survivors.filter((f) => f.severity === 'blocking' && !f.resolved)
-const gatesGreen = finalGates.every((g) => g.status === 'pass')
+
+// A gate the detector marked non-blocking — e2e by default — must not sink the
+// verdict on its own. Its failure is still reported as a finding, at `major`;
+// it just does not turn the run red. Without this, `blocking` was a field
+// nothing read, and the planner's filtering was the only thing hiding that.
+const gatesGreen = finalGates.every(
+  (g) => g.status === 'pass' || blockingById.get(g.id) === false,
+)
 
 // Law 1, enforced rather than assumed: with no gate that ran to completion and
 // no behaviour proven by running, there is nothing to call this green with.
@@ -954,9 +1045,26 @@ const verdict = stoppedBy || finalBlocking.length || !gatesGreen
     ? 'PASS'
     : 'UNPROVEN'
 
+// Named so the caller can print it, and so a cheap run cannot pass silently as
+// a thorough one. A lane that was switched off found nothing because nobody
+// looked, which is not the same as a clean result.
+const residualRisk = [
+  ...(lanes.spec === false ? ['plan conformance — lane not run'] : []),
+  ...(lanes.defects === false ? ['defect hunt — lane not run'] : []),
+  ...(behaviorMode === 'off' ? ['behaviour proof — nothing was run to prove it works'] : []),
+  ...(synthesizeMatrix
+    ? ['gates were not filtered to the diff — an unrelated pre-existing failure fails this run']
+    : []),
+  ...finalGates.filter((g) => g.status === 'not_run').map((g) => `gate ${g.id} could not run`),
+]
+
 return {
   verdict,
   tier,
+  // null means nobody wrote a file — the caller must write its own short report
+  // rather than print a path to something that does not exist.
+  report_path: reportWorthWriting ? `${reportDir}/REPORT.md` : null,
+  residual_risk: residualRisk,
   stopped_by: stoppedBy,
   lane_failures: laneFailures,
   counts: counts(survivors.filter((f) => !f.resolved)),
@@ -975,5 +1083,4 @@ return {
   red_green: redGreen,
   promise_source: matrix.promise_source,
   iterations,
-  report_path: `${reportDir}/REPORT.md`,
 }
