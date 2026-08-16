@@ -19,6 +19,11 @@ const models = cfg.models || {}
 const efforts = cfg.effort || {}
 const lanes = cfg.lanes || { gates: true, spec: true, defects: true, behavior: 'quick' }
 const loopCfg = cfg.loop || { enabled: true, max_iterations: 3, fix_severity: 'blocking' }
+// How many skeptics a candidate faces. Phase 0 resolves the tier into these.
+const judgeCfg = { panel: 1, panel_blocking: 3, ...(cfg.judges || {}) }
+// Named so the report can state it. A PASS at `light` bought less evidence than
+// a PASS at `deep`, and a report that does not say which one ran hides that.
+const tier = A.tier || cfg.tier || 'normal'
 const mode = A.mode || 'loop'
 const diffCmd = A.diffCmd || 'git diff HEAD'
 const cwd = A.cwd || '.'
@@ -618,10 +623,16 @@ const toJudge = candidates.filter((f) => !isMachineTruth(f))
 
 const judged = await parallel(
   toJudge.map((f) => () => {
-    const panel = f.severity === 'blocking' ? 3 : 1
+    // A panel is the most expensive thing this workflow does: N agents per
+    // finding, each reading the code. The tier decides how much of that a
+    // blocking claim is worth — never fewer than one skeptic, per law 2.
+    const panel = Math.max(
+      1,
+      Number(f.severity === 'blocking' ? judgeCfg.panel_blocking : judgeCfg.panel) || 1,
+    )
     const skeptics = []
     for (let i = 0; i < panel; i++) {
-      const angle = panel > 1 ? ANGLES[i] : 'Find the reason this claim is wrong.'
+      const angle = panel > 1 ? ANGLES[i % ANGLES.length] : 'Find the reason this claim is wrong.'
       skeptics.push(() =>
         agent(
           `${CONTEXT}
@@ -652,7 +663,9 @@ You may return severity_adjustment to DOWNGRADE a real but narrower finding. Nev
     }
     return parallel(skeptics).then((votes) => {
       const valid = votes.filter(Boolean)
-      const survives = valid.filter((v) => !v.refuted).length >= (panel > 1 ? 2 : 1)
+      // Majority of the panel that actually returned. A finding needs survivors,
+      // so agents that died do not count as votes to keep it.
+      const survives = valid.filter((v) => !v.refuted).length >= Math.ceil(panel / 2)
       const down = valid.map((v) => v.severity_adjustment).find((s) => s && s !== 'none')
       return {
         ...f,
@@ -702,6 +715,8 @@ const keepRuns = (cfg.report && cfg.report.keep_runs) || 10
 
 const runState = {
   mode,
+  tier,
+  judges: judgeCfg,
   promise_source: matrix.promise_source,
   matrix,
   detected_gates: A.gates || {},
@@ -941,6 +956,7 @@ const verdict = stoppedBy || finalBlocking.length || !gatesGreen
 
 return {
   verdict,
+  tier,
   stopped_by: stoppedBy,
   lane_failures: laneFailures,
   counts: counts(survivors.filter((f) => !f.resolved)),

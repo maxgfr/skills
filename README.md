@@ -46,10 +46,19 @@ npx skills add maxgfr/skills --skill verify  # take one
 
 ```
 /verify              # verify → fix the blockers → re-verify (default)
+/verify light        # the cheap tier — one skeptic, 2 lenses, no behaviour proof
+/verify deep         # every lens, panels throughout, red-green audit
 /verify report       # read-only verdict, no writes
 /verify main         # explicit fixed point
-/verify --behavior full   # add the red-green audit of produced tests
 ```
+
+A run costs agents, and most of them are skeptics — one per candidate finding,
+a panel per blocking one. More lenses produce more candidates, which produce
+more skeptics, so the two multiply. The tier is the dial: roughly 8 agents at
+`light`, 18 at the default, 40 at `deep`. `light` trades away the panel, so the
+verdict line names the tier — a `PASS` at `light` is not a `PASS` at `deep`.
+What no tier touches: the gates always run, and every candidate still faces at
+least one skeptic.
 
 It runs four lanes in parallel, in sub-agents, so the noise never reaches your session:
 

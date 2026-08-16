@@ -348,3 +348,56 @@ test('a blocking finding faces a panel of three and needs two survivors', async 
   assert.equal(result.verdict, 'PASS')
   assert.equal(result.refuted_count, 1)
 })
+
+test('the light tier judges a blocking finding with one skeptic, not three', async () => {
+  // The panel is the most expensive thing the workflow does: N agents per
+  // finding, each reading the code. A tier that cannot shrink it cannot be
+  // cheap, however few finders it runs.
+  const { result, calls } = await run(
+    { config: { lanes: { gates: true, spec: false, defects: true, behavior: 'off' }, loop: { enabled: false }, finders: ['correctness'], judges: { panel: 1, panel_blocking: 1 } } },
+    {
+      matrix: { ...BASE_MATRIX, behaviors: [] },
+      gates: PASSING_GATES,
+      'find:': ONE_BUG,
+      'judge:': SURVIVES,
+      report: 'written',
+    },
+  )
+  assert.equal(calls.filter((c) => c.startsWith('judge:')).length, 1)
+  assert.equal(result.counts.blocking, 1, 'a single skeptic still decides — law 2 holds')
+})
+
+test('a panel is never reduced to zero skeptics', async () => {
+  // No finding without a refutation attempt. A tier that set panel 0 would turn
+  // every candidate into a reported defect nobody checked.
+  const { result, calls } = await run(
+    { config: { lanes: { gates: true, spec: false, defects: true, behavior: 'off' }, loop: { enabled: false }, finders: ['correctness'], judges: { panel: 0, panel_blocking: 0 } } },
+    {
+      matrix: { ...BASE_MATRIX, behaviors: [] },
+      gates: PASSING_GATES,
+      'find:': ONE_BUG,
+      'judge:': { refuted: true, reason: 'unreachable' },
+      report: 'written',
+    },
+  )
+  assert.equal(calls.filter((c) => c.startsWith('judge:')).length, 1)
+  assert.equal(result.refuted_count, 1)
+})
+
+test('a five-skeptic panel needs three survivors', async () => {
+  let vote = 0
+  const { result, calls } = await run(
+    { config: { lanes: { gates: true, spec: false, defects: true, behavior: 'off' }, loop: { enabled: false }, finders: ['correctness'], judges: { panel: 1, panel_blocking: 5 } } },
+    {
+      matrix: { ...BASE_MATRIX, behaviors: [] },
+      gates: PASSING_GATES,
+      'find:': ONE_BUG,
+      // Two refutations out of five leave three survivors — it lives.
+      'judge:': () => (++vote <= 2 ? { refuted: true, reason: 'unreachable' } : SURVIVES),
+      report: 'written',
+    },
+  )
+  assert.equal(calls.filter((c) => c.startsWith('judge:')).length, 5)
+  assert.equal(result.counts.blocking, 1)
+  assert.equal(result.refuted_count, 0)
+})

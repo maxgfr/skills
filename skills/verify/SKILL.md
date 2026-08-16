@@ -28,7 +28,28 @@ Violating the letter of a law is violating its spirit.
 | `/verify <ref>` | Same, with an explicit fixed point (`main`, a SHA, `HEAD~3`). |
 | `/verify --behavior full` | Adds the red-green audit of produced tests. Slower, catches tests that never could fail. |
 
-Config and per-stage model overrides: `references/config.md`.
+## Tiers
+
+A run costs agents, and most of them are skeptics: one per candidate finding, a
+panel per blocking one. More lenses produce more candidates, which produce more
+skeptics — the two multiply, which is why an unbounded run gets expensive fast.
+
+| | Agents | Trade |
+|---|---|---|
+| `/verify light` | ~8 | 2 lenses, no spec lane, no behaviour proof, **one skeptic instead of a panel** |
+| `/verify` | ~18 | 4 lenses, behaviour proof, panel of three on blocking claims |
+| `/verify deep` | ~40 | every lens, red-green audit, panels throughout |
+
+`light` trades away the panel: a wrong finding survives more often and a real
+one dies more often. **The report names the tier** — a `PASS` at `light` is not
+a `PASS` at `deep`, and must never be reported as one. Use `light` for a quick
+pass on a small diff, not to gate a merge.
+
+No tier turns the gates off, and none skips refutation. Laws 1 and 2 have no
+cheap variant: a run with no executed command is `UNPROVEN` at every tier, and
+a candidate nobody challenged is never reported as a finding.
+
+Tiers, per-stage models and panel sizes: `references/config.md`.
 
 ## Phase 0 — Pin it (do this yourself, in the main context)
 
@@ -43,7 +64,7 @@ Cheap, and it fails fast before any agent is spent.
    **Untracked files appear in no diff.** Always run `git status --porcelain` alongside the diff and pass the `??` paths to the lanes as whole-file additions — a brand-new module is invisible to `git diff` and is exactly where new defects live. Do not `git add -N` to force them into the diff: that mutates the index behind the user's back.
 2. **The promise.** In order: a path the user gave → the most recently modified plan file in `~/.claude/plans/` newer than the fixed point → `docs/plans/`, `docs/superpowers/plans/`, `specs/`, `.scratch/` → an issue referenced in the commits (`gh issue view`) → none, in which case the spec lane runs on intent inferred from the diff and **the report says so**.
 3. **The gates.** `node scripts/detect-gates.mjs --cwd <repo> --pretty`. Deterministic, no model. It reads lockfiles, manifests, and `.github/workflows/` — the CI is the repo's own definition of green.
-4. **The config.** Defaults ← `~/.claude/verify.json` ← `<repo>/.claude/verify.json` ← flags. Resolve it here, into concrete values — the lanes receive resolved arguments, not a config object to re-interpret. That includes `gates.extra` / `gates.skip`, which you apply to the detected list before passing it on.
+4. **The config.** Tier preset ← `~/.claude/verify.json` ← `<repo>/.claude/verify.json` ← flags. Resolve it here, into concrete values — the lanes receive resolved arguments, not a config object to re-interpret. That includes `gates.extra` / `gates.skip`, which you apply to the detected list before passing it on, and the tier, which you expand into `finders`, `lanes`, `judges` and `effort` using the table in `references/config.md`. Pass the tier name through as well: the report has to state which one ran.
 5. **The run directory.** `date +%Y%m%d-%H%M%S` → `<report.dir>/<timestamp>/`. Compute it now and pass it in; a fixed path means each run silently erases the last.
 6. **The baseline for the fix loop.** `git stash create` (empty output means a clean tree — use `HEAD`). This dangling SHA is what the loop diffs against to prove it only made the repairs it claims. It touches no ref and no file.
 
@@ -74,7 +95,7 @@ Fable is the scaffolding: it decides *what* gets verified and writes down *what 
 Into the conversation, and nothing more than this:
 
 ```
-VERDICT: FAIL — 2 blocking, 3 major, 4 minor   (7 candidates refuted)
+VERDICT: FAIL — 2 blocking, 3 major, 4 minor   (7 candidates refuted)   tier: normal
 
 EVIDENCE
   typecheck  pnpm run typecheck   exit 2   src/api/user.ts(41,7): Type 'string | undefined' is not assignable
@@ -104,6 +125,13 @@ Three verdicts, not two:
 | `UNPROVEN` | Nothing is broken and nothing was checked: no gate ran to completion and no behaviour was proven. This is not a pass. Report what would have to exist for the run to mean something. |
 
 Rules for this block: no adjectives, no "Great!", no summary of what the code does. Findings the skeptics killed are a count, not a list. Anything unverified is named in RESIDUAL RISK — silence there is a lie. **A lane that errored is named there too**: a lane that died found nothing because it never ran, which is not the same as a clean result.
+
+**The verdict line states the tier.** At `light` it also carries what the tier gave up, because that is the difference between "nothing is wrong" and "nothing cheap found anything":
+
+```
+VERDICT: PASS — 0 blocking   (3 candidates refuted)   tier: light
+  light: 2 lenses, one skeptic per claim, no behaviour proof. Not a merge gate.
+```
 
 ## Red flags
 
