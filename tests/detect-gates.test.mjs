@@ -119,6 +119,24 @@ test('pyproject: derives per-tool commands and picks up the uv prefix', () => {
   )
 })
 
+test("the repo's own aggregate gate is detected without a CI workflow to reveal it", () => {
+  // `check` and `validate` are how a repo most often names the command that
+  // defines green. Deriving them only from a CI workflow means a repo without
+  // one reports its main gate as absent.
+  const r = detect('aggregate-check')
+  assert.ok(cmds(r).includes('npm run check'), `check dropped: ${JSON.stringify(cmds(r))}`)
+  assert.ok(cmds(r).includes('npm run validate'))
+  assert.ok(!cmds(r).includes('npm run check:fix'), 'a :fix variant mutates — never a gate')
+  assert.ok(!cmds(r).includes('npm run start'), 'a server is not a gate')
+  assert.equal(r.ci.workflows.length, 0, 'this fixture has no CI — the gates come from scripts')
+})
+
+test("an aggregate gate gets the combined budget, not a single gate's", () => {
+  const r = detect('aggregate-check')
+  assert.equal(r.gates.find((g) => g.cmd === 'npm run check').timeout_s, 600)
+  assert.equal(r.gates.find((g) => g.cmd === 'npm run test').timeout_s, 300)
+})
+
 test('an empty directory yields no gates and says so', () => {
   const r = detect('.')
   assert.equal(r.gates.length, 0)

@@ -1,0 +1,11 @@
+{
+  "name": "aggregate-check",
+  "version": "1.0.0",
+  "scripts": {
+    "validate": "node scripts/validate.mjs",
+    "check": "npm run validate && npm test",
+    "check:fix": "node scripts/validate.mjs --write",
+    "test": "node --test",
+    "start": "node server.mjs"
+  }
+}

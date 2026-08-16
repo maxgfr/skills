@@ -11,7 +11,7 @@
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join, resolve, basename } from 'node:path'
 
-const KIND_ORDER = ['typecheck', 'lint', 'format', 'test', 'build', 'e2e', 'ci']
+const KIND_ORDER = ['typecheck', 'lint', 'format', 'test', 'build', 'e2e', 'check', 'ci']
 
 // Script names that map to a gate kind. Matched against the script/target name.
 const NAME_RULES = [
@@ -21,6 +21,10 @@ const NAME_RULES = [
   { kind: 'test', re: /^(test|tests|test:unit|unit|test:ci)$/ },
   { kind: 'e2e', re: /^(test:e2e|e2e|test:integration|integration|test:browser)$/ },
   { kind: 'build', re: /^(build|compile)$/ },
+  // The repo's own aggregate gate. Without this, a repo whose green is defined
+  // by `npm run check` and which has no CI workflow to fall back on reports its
+  // main gate as absent — the one command the author considers definitive.
+  { kind: 'check', re: /^(check|checks|validate|verify|ci|qa)$/ },
 ]
 
 // Names we never turn into a gate: they mutate, watch, or serve.
@@ -62,7 +66,10 @@ function addGate(kind, cmd, source, opts = {}) {
     cmd,
     source,
     blocking: opts.blocking ?? kind !== 'e2e',
-    timeout_s: opts.timeout_s ?? (kind === 'e2e' ? 900 : kind === 'build' ? 600 : 300),
+    // An aggregate `check` runs the other gates back to back, so it needs their
+    // combined budget rather than a single gate's.
+    timeout_s:
+      opts.timeout_s ?? (kind === 'e2e' ? 900 : kind === 'build' || kind === 'check' ? 600 : 300),
   })
 }
 
