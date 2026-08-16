@@ -6,28 +6,30 @@ on:
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
+permissions:
+  contents: read
+
 jobs:
   release:
-    name: Version
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # tag, commit the version bump, publish the GitHub release
+      issues: write
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # semantic-release reads the whole history to pick the bump
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
-      - run: npm install
+      - run: npm ci
 
-      - name: Create version pull request
-        uses: changesets/action@v1
-        with:
-          version: npm run version
-          publish: npx changeset tag
-          commit: "chore: version skills"
-          title: "chore: version skills"
+      - name: Release
+        run: npx semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

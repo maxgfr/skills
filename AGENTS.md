@@ -34,7 +34,9 @@ skills/<name>/
 npm run check
 ```
 
-Add a changeset (`npm run changeset`) for anything that changes skill behaviour. Version bumps flow to `.claude-plugin/plugin.json` automatically via `npm run version`.
+Name the commit for the bump you want: `fix:` for a patch, `feat:` for a minor, a `BREAKING CHANGE:` footer for a major. semantic-release reads the history on `main`, versions both manifests and tags — see [CONTRIBUTING.md](./CONTRIBUTING.md#changing-behaviour).
+
+**A guard rule that changed needs a test for both directions.** Every false positive fixed in `forbidden-repairs.mjs` came from a rule that was only ever tested on the cheat it was written for. A rule that refuses something must also have a test proving what it lets through — the guard reverts hunks and stops the loop, so refusing an honest repair costs more than missing a dishonest one.
 
 ## Testing a skill for real
 

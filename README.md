@@ -121,11 +121,16 @@ Not everything belongs here. A skill built around a substantial engine — a tai
 ## Development
 
 ```bash
-npm install
+npm ci
 npm run validate   # frontmatter, naming, dead references, plugin manifest, script syntax
 npm test           # the engines and the workflow, against fixtures
 npm run check      # everything, as CI runs it
 ```
+
+The skills ship dependency-free; `npm ci` installs the release tooling only.
+Releases are cut by semantic-release from conventional commits on `main` — `fix:`
+for a patch, `feat:` for a minor — which versions `package.json` and
+`.claude-plugin/plugin.json` together, writes the changelog and tags.
 
 `npm run validate` is opinionated on purpose: a skill whose description does not say *when to use it* never triggers, and a skill pointing at a file that does not exist wastes a real agent's turn discovering that. Both fail the build.
 
