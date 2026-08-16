@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/maxgfr/skills/compare/v1.0.0...v1.1.0) (2026-08-16)
+
+
+### Features
+
+* **verify:** make the gates-only tier the default, and stop pinning models ([eb26307](https://github.com/maxgfr/skills/commit/eb263075b677f735fddd1e66f08f1f230737ba8a))
+
 # 1.0.0 (2026-08-16)
 
 
