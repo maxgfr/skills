@@ -64,6 +64,10 @@ Exit 1 means the round contains a forbidden repair. Then:
 
 This check is deterministic and runs regardless of what the fixer claims it did. A fixer that reports `fixed: true` while having added an `eslint-disable` is caught here, which is the entire reason the check is a script and not a prompt.
 
+`--since` also scans files the round *created* — a new test full of `it.skip()` produces nothing in `git diff`. A patch fed on stdin or via `--patch` cannot see them: the report says so in `untracked_scanned` and `notes` rather than passing the round quietly. Pass `--include-untracked` if you are piping a patch and want them scanned anyway.
+
+Each rule is scoped to where the cheat can actually live, because the guard reverts hunks and stops the loop — refusing an honest repair costs more than missing a dishonest one. A bare `.skip(` counts only inside a test file (elsewhere it is `repo.query().skip(20)`, standard pagination); `@ts-ignore` in a Markdown file is documentation, not a suppression; and a deleted test line is read with its strings blanked, so renaming `it('should return 401')` is not deleting an assertion. If the guard fires, the rule it names is the finding — do not argue with it, revert and escalate.
+
 ## What counts as resolved
 
 **Two independent confirmations, or it is not resolved.**
