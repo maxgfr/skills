@@ -25,7 +25,7 @@ const judgeCfg = { panel: 1, panel_blocking: 3, ...(cfg.judges || {}) }
 // a PASS at `deep`, and a report that does not say which one ran hides that.
 // Must match DEFAULT_TIER in scripts/tiers.mjs. The workflow body runs in a
 // wrapper with no module resolution, so it cannot import the constant.
-const tier = A.tier || cfg.tier || 'ultralight'
+const tier = A.tier || cfg.tier || 'light'
 const mode = A.mode || 'loop'
 const diffCmd = A.diffCmd || 'git diff HEAD'
 const cwd = A.cwd || '.'

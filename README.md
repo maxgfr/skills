@@ -45,28 +45,33 @@ npx skills add maxgfr/skills --skill verify  # take one
 ### verify
 
 ```
-/verify              # gates only → fix the blockers → re-verify (default, 1 agent)
-/verify light        # + a 2-lens defect hunt, one skeptic per claim
-/verify normal       # + plan conformance and behaviour proof, panels on blockers
+/verify              # gates + plan + defect hunt → fix the blockers → re-verify
+/verify normal       # + behaviour proof, panels of three on blockers
 /verify deep         # every lens, panels throughout, red-green audit
+/verify ultralight   # gates only — no defect hunt, no plan check
 /verify report       # read-only verdict, no writes
 /verify main         # explicit fixed point
 ```
 
 A run costs agents, and most of them are skeptics — one per candidate finding,
-a panel per blocking one. More lenses produce more candidates, which produce
-more skeptics, so the two multiply. The tier is the dial: **1 agent** by
-default, ~8 at `light`, ~18 at `normal`, ~40 at `deep`.
+a panel per blocking one. So the cost scales with what the finders turn up, not
+with the tier alone: the default costs ~7 agents when it finds nothing and ~16
+when it surfaces nine, even if all nine are refuted and the verdict is `PASS`.
+`ultralight` is 1 flat; `deep` on a large diff is where this reaches the forties.
 
-**The default runs the gates and nothing else.** It produces no model-authored
-finding, so there is nothing to refute and nothing to be wrong about — a green
-`/verify` means the commands passed, not that the code is right. Nothing read
-the diff, nothing checked the plan, nothing was run to prove it works. It is not
-a merge gate; step up a tier for that. The verdict line always names the tier,
-so a cheap PASS can never be read as a thorough one.
+**The default verifies the change.** It reads the diff for defects, checks it
+against the promise, and refutes every candidate before you see it. What it
+defers to `normal` is the behaviour proof — the lane that starts servers and runs
+CLIs — and the three-skeptic panel on blocking claims.
+
+`ultralight` is the odd one out and deliberately so: it runs your gates and
+nothing else, produces no model-authored finding, and so has nothing to be wrong
+about. A green `ultralight` means the commands passed, not that the code is
+right. Use it when the gates really are the question; it is not a merge gate.
 
 What no tier touches: the gates always run, and every candidate still faces at
-least one skeptic.
+least one skeptic. The verdict line always names the tier, so a cheap PASS can
+never be read as a thorough one.
 
 Every stage runs on your session's model by default — a verification is never
 spawned on a bigger model than the work that produced it.

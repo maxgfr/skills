@@ -573,7 +573,7 @@ test('no tier ships an empty finders array — empty means all six lenses', asyn
 })
 
 test('each tier spawns the lenses it promises', async () => {
-  const expected = { ultralight: 0, light: 2, normal: 4, deep: 6 }
+  const expected = { ultralight: 0, light: 3, normal: 4, deep: 6 }
   for (const [name, count] of Object.entries(expected)) {
     const { calls } = await run(
       { tier: name, gates: DETECTED, config: resolveTier(name) },

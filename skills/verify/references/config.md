@@ -18,33 +18,53 @@ more candidates means more skeptics, so the two multiply.
 anything you set explicitly wins. The table below is a description of that
 script, and the script is what runs.
 
-| | `ultralight` (default) | `light` | `normal` | `deep` |
+| | `ultralight` | `light` (default) | `normal` | `deep` |
 |---|---|---|---|---|
 | `lanes.gates` | `true` | `true` | `true` | `true` |
-| `lanes.spec` | `false` | `false` | `true` | `true` |
+| `lanes.spec` | `false` | `true` | `true` | `true` |
 | `lanes.defects` | `false` | `true` | `true` | `true` |
 | `lanes.behavior` | `"off"` | `"off"` | `"quick"` | `"full"` |
-| lenses actually run | 0 | 2 | 4 | 6 |
+| lenses actually run | 0 | 3 | 4 | 6 |
 | `judges.panel_blocking` | — | 1 | 3 | 3 |
-| Agents, green run | **1** | ~8 | ~18 | ~40 |
-| Agents, one red gate repaired | ~5 | | | |
+| Agents before skeptics | 1 | **~7** | ~9 | ~13 |
+| Plus, per candidate found | 0 | 1 | 1 (3 if blocking) | 1 (3 if blocking) |
+
+The second row is the one that bites. Skeptics are spawned per candidate, so the
+cost scales with how much the finders turn up, not with the tier alone: a `light`
+run that finds nothing costs ~7 agents, and one that surfaces nine candidates
+costs ~16 even when all nine are refuted and the verdict is `PASS`. A `deep` run
+on a large diff is where this compounds into the tens.
 
 ```json
-{ "tier": "light" }
+{ "tier": "normal" }
 ```
 
-### `ultralight` — the default
+### `light` — the default
 
-Gates only. It runs the repo's real commands and rules on the exit codes. It
+It verifies the change: reads the diff for defects across three lenses, checks it
+against the promise, and puts every candidate in front of a skeptic before you
+see it. What it defers is the **behaviour proof** — the lane that starts servers
+and runs CLIs, and the slowest by far — and the **three-skeptic panel** on
+blocking claims. One skeptic instead of three means a wrong finding survives more
+often and a real one dies more often; the report names the tier, so a `PASS` at
+`light` is never read as a `PASS` at `deep`.
+
+The spec lane carries its own data guard: with no promise to check against, the
+matrix produces no requirements and the lane costs nothing. You do not have to
+turn it off when there is no plan.
+
+### `ultralight` — gates only, opt-in
+
+It runs the repo's real commands and rules on the exit codes, and stops. It
 produces **no model-authored finding**, so there is nothing to refute and law 2
-holds by construction. It is an honest gate runner, not a degraded defect hunt.
+holds by construction. An honest gate runner, not a cheap verification.
 
 Two consequences worth stating plainly:
 
-- **The default is not a merge gate.** Nothing reads the diff, nothing checks
-  the plan, nothing is run to prove it works. Step up a tier for that.
+- **It is not a merge gate.** Nothing reads the diff, nothing checks the plan,
+  nothing is run to prove it works. A green run means the commands passed.
 - **It minimises agents, not wall-clock.** With no planner there is nothing to
-  filter the detected gates down to the diff, so `ultralight` runs *every* gate
+  filter the detected gates down to the diff, so it runs *every* gate
   `detect-gates.mjs` found — including e2e at a 900-second timeout and up to six
   commands lifted from your CI workflow. On a README-only diff it will still run
   your test suite, and an unrelated pre-existing failure will fail the run. That
@@ -52,12 +72,6 @@ Two consequences worth stating plainly:
 
 When the detector finds no gate at all, `ultralight` would spend zero agents and
 report `UNPROVEN` over nothing. Phase 0 escalates to `light` instead.
-
-### `light` gives up the panel
-
-One skeptic instead of three on a blocking claim means a wrong finding survives
-more often, and a real one dies more often. That is the trade, and the report
-names the tier so a `PASS` at `light` is never read as a `PASS` at `deep`.
 
 **No tier turns the gates off, and none skips refutation.** Laws 1 and 2 have no
 cheap variant: a run with no executed command reports `UNPROVEN` at every tier,
@@ -71,11 +85,11 @@ The presets are a starting point, not a straitjacket:
 
 ## Defaults
 
-Shown at `ultralight`, the default.
+Shown at `light`, the default.
 
 ```json
 {
-  "tier": "ultralight",
+  "tier": "light",
   "models": {
     "planner":  "inherit",
     "reporter": "inherit",
@@ -86,19 +100,21 @@ Shown at `ultralight`, the default.
     "fixer":    "inherit"
   },
   "effort": { "gates": "low", "planner": "low", "finders": "medium", "judges": "medium" },
-  "lanes":  { "gates": true, "spec": false, "defects": false, "behavior": "off" },
+  "lanes":  { "gates": true, "spec": true, "defects": true, "behavior": "off" },
   "judges": { "panel": 1, "panel_blocking": 1 },
   "loop":   { "enabled": true, "max_iterations": 3, "fix_severity": "blocking" },
   "gates":  { "extra": [], "skip": [] },
-  "finders": ["correctness"],
+  "finders": ["correctness", "failure-handling", "wiring"],
   "report": { "dir": ".claude/verify", "keep_runs": 10 }
 }
 ```
 
-`finders` is non-empty even though `lanes.defects` is `false`: an **empty**
-`finders` array does not mean zero lenses, it makes the workflow fall back to
-all six. Only `lanes.defects` turns the lane off. `scripts/tiers.mjs` holds this
-invariant and a test enforces it.
+`deep` adds `state-async`, `trust-input` and `leftovers`.
+
+Every tier carries a **non-empty** `finders` array, `ultralight` included, even
+though its `lanes.defects` is `false`: an empty array does not mean zero lenses,
+it makes the workflow fall back to all six. Only `lanes.defects` turns the lane
+off. `scripts/tiers.mjs` holds that invariant and a test enforces it.
 
 ## Judges
 
@@ -181,10 +197,10 @@ is `/verify report` as a permanent setting. `fix_severity` accepts `blocking` (d
 Flags win over every file.
 
 ```
-/verify                         # loop mode, ultralight — gates only
-/verify light                   # + a 2-lens defect hunt
-/verify normal                  # + plan conformance and behaviour proof
-/verify deep                    # every lens, panels, red-green audit
+/verify                         # loop mode, light — gates, plan, 3-lens defect hunt
+/verify normal                  # + behaviour proof and panels on blockers
+/verify deep                    # every lens, red-green audit
+/verify ultralight              # gates only, no defect hunt
 /verify report                  # read-only
 /verify main                    # explicit fixed point
 /verify --behavior full         # add the red-green audit

@@ -8,20 +8,35 @@ import { TIERS, TIER_NAMES, DEFAULT_TIER, LENS_NAMES, resolveTier } from '../ski
 const here = dirname(fileURLToPath(import.meta.url))
 const SCRIPT = join(resolve(here, '..'), 'skills', 'verify', 'scripts', 'tiers.mjs')
 
-test('the default tier is the cheapest one', () => {
-  // The whole point of the change: an unqualified /verify must not spend forty
-  // agents. If this flips, every run gets expensive again silently.
-  assert.equal(DEFAULT_TIER, 'ultralight')
-  assert.equal(TIER_NAMES[0], 'ultralight', 'the listing order is the cost order')
+test('the default tier actually verifies the change', () => {
+  // The default is the one people invoke. A default that only runs the gates
+  // answers "do the commands pass", not "is this change any good" — which is
+  // the question /verify is asked. It must read the diff and check the promise.
+  const d = resolveTier(DEFAULT_TIER)
+  assert.equal(d.lanes.defects, true, 'the default must hunt for defects')
+  assert.equal(d.lanes.spec, true, 'the default must check the change against its promise')
+  assert.ok(d.finders.length >= 2, 'one lens is not a defect hunt')
+  assert.notEqual(DEFAULT_TIER, 'ultralight', 'gates-only is an opt-in, never the default')
+})
+
+test('the default is still not the most expensive tier', () => {
+  // It buys real verification, but the lane that starts servers and the
+  // three-skeptic panel stay opt-in — that is what kept the old default at 40
+  // agents.
+  const d = resolveTier(DEFAULT_TIER)
+  assert.equal(d.lanes.behavior, 'off')
+  assert.equal(d.judges.panel_blocking, 1)
+  assert.ok(d.finders.length < TIERS.deep.finders.length)
 })
 
 test('the tiers are ordered by what they actually run', () => {
   const lensCount = TIER_NAMES.map((n) => (TIERS[n].lanes.defects ? TIERS[n].finders.length : 0))
-  assert.deepEqual(lensCount, [0, 2, 4, 6])
+  assert.deepEqual(lensCount, [0, 3, 4, 6])
   assert.deepEqual(
     TIER_NAMES.map((n) => TIERS[n].lanes.behavior),
     ['off', 'off', 'quick', 'full'],
   )
+  assert.equal(TIER_NAMES[0], 'ultralight', 'the listing order is the cost order')
 })
 
 test('ultralight runs the gates and nothing else', () => {

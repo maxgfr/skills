@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Prove that work just produced actually works, and fix what it finds. By default it runs the repo's real gates — the commands your lockfile, manifests and CI actually define — and rules on the exit codes; ask for a deeper tier and it also checks the diff against the plan it promised, hunts defects with adversarial verification, and runs the thing for real. Use when an implementation, branch or PR needs checking before it is called done; when about to claim something is complete, fixed or passing; when the user says "verify", "vérifie", "check my work", "did that actually work", "do another pass", or asks for a second opinion on work you just did. Fixes the blockers in a bounded loop, and refuses repairs that only silence the checker (skipped tests, @ts-ignore, edited CI). Report-only mode available.
+description: Prove that work just produced actually works, and fix what it finds — run the repo's real gates, check the diff against the plan it promised, hunt defects, and refute every candidate before reporting it. Use when an implementation, branch or PR needs checking before it is called done; when about to claim something is complete, fixed or passing; when the user says "verify", "vérifie", "check my work", "did that actually work", "do another pass", or asks for a second opinion on work you just did. Fixes the blockers in a bounded loop, and refuses repairs that only silence the checker (skipped tests, @ts-ignore, edited CI). Tiers trade cost against depth, from a gates-only pass to a full audit that also runs the thing for real. Report-only mode available.
 ---
 
 # verify
@@ -28,25 +28,30 @@ produce more candidates, which produce more skeptics, so the two multiply.
 
 | Invocation | Agents | What it does |
 |---|---|---|
-| `/verify` | **1** | **Default.** Runs the repo's real gates, rules on the exit codes. Nothing else. |
-| `/verify light` | ~8 | + a 2-lens defect hunt, one skeptic per claim |
-| `/verify normal` | ~18 | + plan conformance and behaviour proof, panel of three on blockers |
-| `/verify deep` | ~40 | every lens, red-green audit, panels throughout |
+| `/verify` | ~7 + 1/candidate | **Default.** Gates, plan conformance, a 3-lens defect hunt, one skeptic per claim. |
+| `/verify normal` | ~9 + 1–3/candidate | + behaviour proof — runs the thing — and a panel of three on blockers |
+| `/verify deep` | ~13 + 1–3/candidate | every lens, red-green audit, panels throughout |
+| `/verify ultralight` | 1 | Gates only. No defect hunt, no plan check. Opt in when that is the question. |
 | `/verify report` | — | Read-only, any tier. Follow with "fix" to apply the blockers once. |
 | `/verify <ref>` | — | Explicit fixed point (`main`, a SHA, `HEAD~3`). |
 
-**The default does not hunt for bugs — it has no opinion to be wrong about.** It
-produces no model-authored finding, so there is nothing to refute. A green
-`/verify` means the commands passed, and that is all: nothing read the diff,
-nothing checked the plan, nothing was run to prove it works. **It is not a merge
-gate.** Step up a tier for that, and say which tier you ran. It also minimises
-*agents*, not wall-clock — with no planner to filter them it runs **every**
-detected gate, so an unrelated pre-existing failure fails the run and is reported
-as pre-existing rather than repaired.
+Skeptics are spawned per candidate, so cost scales with what the finders turn up,
+not with the tier alone: a default run that finds nothing costs ~7 agents, one
+that surfaces nine costs ~16 even when all nine are refuted and it returns `PASS`.
+
+**The default verifies the change**: it reads the diff for defects, checks it
+against the promise, and every candidate faces a skeptic before you see it. What
+it defers to `normal` is the behaviour proof — the lane that starts servers and
+runs CLIs, the slowest by far — and the three-skeptic panel on blocking claims.
+
+**`ultralight` is a gate runner, not a cheap verification.** It produces no
+model-authored finding, so there is nothing to refute and nothing to be wrong
+about; a green run means the commands passed and nothing more. It is not a merge
+gate, it runs **every** detected gate because no planner filtered them, and if
+you report its PASS, say which tier produced it.
 
 No tier turns the gates off, and none skips refutation: laws 1 and 2 have no
-cheap variant. **Every stage runs on your session's model by default** — nothing
-is spawned on a bigger model than the work you were doing.
+cheap variant. **Every stage runs on your session's model by default.**
 
 Presets are data: `scripts/tiers.mjs`. Prose: `references/config.md`.
 
@@ -135,9 +140,9 @@ who takes it for a full verification. Word it from `residual_risk` in the return
 value:
 
 ```
-VERDICT: PASS — gates only   tier: ultralight
-  ultralight: no defect hunt, no plan check, nothing run to prove it works.
-  Every detected gate ran, unfiltered. Not a merge gate — /verify normal for that.
+VERDICT: PASS — 0 blocking   (3 candidates refuted)   tier: light
+  light: no behaviour proof — nothing was run to prove it works — and one
+  skeptic per claim rather than a panel.
 ```
 
 **When `report_path` comes back `null`**, nothing survived and no lane died, so
