@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/maxgfr/skills/compare/v1.1.0...v1.1.1) (2026-08-16)
+
+
+### Bug Fixes
+
+* **verify:** make the default tier do the job, not just run the gates ([8a94e71](https://github.com/maxgfr/skills/commit/8a94e711cf36b2974acaabf50bea30c5da61e219))
+
 # [1.1.0](https://github.com/maxgfr/skills/compare/v1.0.0...v1.1.0) (2026-08-16)
 
 
