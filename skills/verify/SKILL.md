@@ -66,9 +66,9 @@ Cheap, and it fails fast before any agent is spent.
    - **Not a git repo** → the target directory, and the report says scope is coarse.
 
    **Untracked files appear in no diff.** Always run `git status --porcelain` alongside the diff and pass the `??` paths to the lanes as whole-file additions — a brand-new module is invisible to `git diff` and is exactly where new defects live. Do not `git add -N` to force them into the diff: that mutates the index behind the user's back.
-2. **The promise.** In order: a path the user gave → the most recently modified plan file in `~/.claude/plans/` newer than the fixed point → `docs/plans/`, `docs/superpowers/plans/`, `specs/`, `.scratch/` → an issue referenced in the commits (`gh issue view`) → none, in which case the spec lane runs on intent inferred from the diff and **the report says so**.
+2. **The promise.** In order: a path the user gave → the active host's plan artifact (Codex: the current conversation plan; Claude Code: the most recently modified file in `~/.claude/plans/` newer than the fixed point) → `docs/plans/`, `docs/superpowers/plans/`, `specs/`, `.scratch/` → an issue referenced in the commits (`gh issue view`) → none, in which case the spec lane runs on intent inferred from the diff and **the report says so**.
 3. **The gates.** `node scripts/detect-gates.mjs --cwd <repo> --pretty`. Deterministic, no model. It reads lockfiles, manifests, and `.github/workflows/` — the CI is the repo's own definition of green.
-4. **The config.** `node scripts/tiers.mjs <tier>` ← `~/.claude/verify.json` ← `<repo>/.claude/verify.json` ← flags. **Run the script**; transcribing the table by hand is how a `lanes` object loses a key — which leaves that lane **on** — or gains an empty `finders` array, which runs **all six** lenses. Resolve everything into concrete values here; the lanes receive values, not policy. Apply `gates.extra` / `gates.skip` to the detected list, and pass the tier name through: the report has to state which one ran. A bare word is a tier before it is a ref (`light`, `normal`, `deep`, `ultralight`, `report`); an ambiguous branch needs `--ref light`. **If the detector found no gate, do not run `ultralight`** — it would spend zero agents and report `UNPROVEN` over nothing. Escalate to `light` and say why.
+4. **The config.** `node scripts/tiers.mjs <tier>` ← user config (`$VERIFY_CONFIG`, then `$CODEX_HOME/verify.json` on Codex or `~/.claude/verify.json` on Claude Code) ← repo config (`<repo>/.agents/verify.json`, with `<repo>/.claude/verify.json` retained as the Claude-compatible legacy location) ← flags. **Run the script**; transcribing the table by hand is how a `lanes` object loses a key — which leaves that lane **on** — or gains an empty `finders` array, which runs **all six** lenses. Resolve everything into concrete values here; the lanes receive values, not policy. Apply `gates.extra` / `gates.skip` to the detected list, and pass the tier name through: the report has to state which one ran. A bare word is a tier before it is a ref (`light`, `normal`, `deep`, `ultralight`, `report`); an ambiguous branch needs `--ref light`. **If the detector found no gate, do not run `ultralight`** — it would spend zero agents and report `UNPROVEN` over nothing. Escalate to `light` and say why.
 5. **The run directory.** `date +%Y%m%d-%H%M%S` → `<report.dir>/<timestamp>/`. Compute it now and pass it in; a fixed path means each run silently erases the last. Prune here too, deterministically — keep the `keep_runs` most recent directories and delete the rest. Pruning that depends on a model remembering to do it is pruning that stops happening.
 6. **The baseline for the fix loop.** `git stash create` (empty output means a clean tree — use `HEAD`). This dangling SHA is what the loop diffs against to prove it only made the repairs it claims. It touches no ref and no file.
 
@@ -94,8 +94,8 @@ is nothing for a planner to aim.
 
 **Host tier — pick the highest one available:**
 
-1. **Workflow** (Claude Code). Call `Workflow` with `scriptPath` pointing at `workflows/verify.mjs` and pass Phase 0's output as `args`. All the noise — test logs, file reads, finder chatter — stays inside the workflow; only the verdict comes back. This is the point of the skill: verification that does not cost you the context you were working in.
-2. **Parallel sub-agents.** No Workflow tool? Dispatch the same lanes as concurrent agents and aggregate. `references/fallbacks.md`.
+1. **Workflow** (when the host exposes it, including Claude Code). Call `Workflow` with `scriptPath` pointing at `workflows/verify.mjs` and pass Phase 0's output as `args`. All the noise — test logs, file reads, finder chatter — stays inside the workflow; only the verdict comes back.
+2. **Parallel subagents** (Codex and other agent-capable hosts). Dispatch the same lanes with the host's native subagent capability and aggregate. `references/fallbacks.md`.
 3. **Inline sequential.** Last resort. Same phases, same laws, and the report must say the run was inline.
 
 ## Output contract
@@ -121,7 +121,7 @@ REQUIREMENTS  4 implemented · 1 partial · 1 missing · 1 out of scope
 RESIDUAL RISK
   No e2e suite in this repo; the OAuth path was proven by running it, the SAML path was not.
 
-Full report: .claude/verify/20260815-142233/REPORT.md
+Full report: .agents/verify/20260815-142233/REPORT.md
 ```
 
 Three verdicts, not two:

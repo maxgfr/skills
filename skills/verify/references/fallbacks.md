@@ -43,9 +43,9 @@ Invoking `/verify` is itself the explicit opt-in the Workflow tool requires — 
 
 If the workflow fails mid-run, it returns a `runId`. Resume with `Workflow({scriptPath, resumeFromRunId})`: unchanged agent calls replay from cache, and only the failed step onward runs live.
 
-## Tier 2 — Parallel sub-agents
+## Tier 2 — Parallel subagents (including Codex)
 
-No Workflow tool, but a Task/Agent tool exists. Same phases, dispatched by hand:
+No Workflow tool, but a native subagent tool exists (for example Codex's subagent capability). Same phases, dispatched by hand:
 
 1. **Matrix** — one agent, cheap model, returns the matrix JSON. Parse it yourself.
 2. **Lanes** — dispatch in one message so they run concurrently: one gate-runner, one agent per requirement group, one per finder lens, one per behavior claim. Collect the structured returns.
@@ -65,7 +65,7 @@ No sub-agents at all. Run the phases yourself, sequentially, and hold the line o
 - Cap yourself: 8 findings, 400 words per lane. Verbosity here is what eats the context.
 - The report must say `execution: inline` — a reader deserves to know the findings had a single perspective.
 
-## Non-Claude hosts
+## Hosts without Workflow
 
 The skill installs everywhere `npx skills add` reaches. Two things degrade:
 

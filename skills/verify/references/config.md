@@ -3,9 +3,10 @@
 Resolution order, each layer overriding the one before:
 
 1. The tier's preset (below)
-2. `~/.claude/verify.json` — your preferences, every repo
-3. `<repo>/.claude/verify.json` — this repo's rules, committed with it
-4. Flags on the invocation
+2. `$VERIFY_CONFIG`, when set explicitly
+3. The host user config: `$CODEX_HOME/verify.json` on Codex, or `~/.claude/verify.json` on Claude Code
+4. `<repo>/.agents/verify.json` — portable repo rules; `<repo>/.claude/verify.json` remains a supported Claude-compatible legacy location
+5. Flags on the invocation
 
 ## Tiers
 
@@ -105,7 +106,7 @@ Shown at `light`, the default.
   "loop":   { "enabled": true, "max_iterations": 3, "fix_severity": "blocking" },
   "gates":  { "extra": [], "skip": [] },
   "finders": ["correctness", "failure-handling", "wiring"],
-  "report": { "dir": ".claude/verify", "keep_runs": 10 }
+  "report": { "dir": ".agents/verify", "keep_runs": 10 }
 }
 ```
 
@@ -224,7 +225,7 @@ It never commits, never pushes, and never opens a PR. A run ends with a dirty wo
 
 ## Output on disk
 
-`.claude/verify/<YYYYMMDD-HHMMSS>/`
+`.agents/verify/<YYYYMMDD-HHMMSS>/`
 
 The `<YYYYMMDD-HHMMSS>` segment is computed in Phase 0 and passed in, so consecutive runs never overwrite each other.
 
@@ -243,7 +244,7 @@ keyed on evidence, not on the tier — a green `deep` run has as little to say a
 green `ultralight` one. The four-file set above is what you get whenever there
 *is* something to write down.
 
-Add `.claude/verify/` to `.gitignore`. Runs beyond `keep_runs` are pruned
+Add `.agents/verify/` to `.gitignore`. Runs beyond `keep_runs` are pruned
 oldest-first, in Phase 0, deterministically — pruning does not depend on a model
 remembering to do it.
 

@@ -64,4 +64,4 @@ A run beats an argument. Sending these to a skeptic invites it to talk its way p
 
 ## When the skeptics are wrong
 
-They will be, sometimes. The guard is that the refuted list lands in `.claude/verify/<ts>/findings.json` with each skeptic's reasoning and vote, so a wrong kill is auditable rather than invisible.
+They will be, sometimes. The guard is that the refuted list lands in `.agents/verify/<ts>/findings.json` with each skeptic's reasoning and vote, so a wrong kill is auditable rather than invisible.
