@@ -1,3 +1,10 @@
+## [1.1.2](https://github.com/maxgfr/skills/compare/v1.1.1...v1.1.2) (2026-08-25)
+
+
+### Bug Fixes
+
+* make verify compatible with Codex ([aa8d8e1](https://github.com/maxgfr/skills/commit/aa8d8e1725609d3c278d2e468c8e74c1e68bf9b9))
+
 ## [1.1.1](https://github.com/maxgfr/skills/compare/v1.1.0...v1.1.1) (2026-08-16)
 
 
