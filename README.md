@@ -43,7 +43,8 @@ npx skills add maxgfr/skills --skill verify  # take one — each is self-contain
 
 They are two ends of one loop. `blueprint` writes the promise to
 `docs/plans/<date>-<slug>.md`; `verify` reads that same file as the promise it
-checks the diff against. Neither needs configuring to find the other.
+checks the diff against — a path it already searched before this skill existed,
+so nothing has to be configured.
 
 ```
 /blueprint            # grill → ground → write the plan → approve
@@ -51,9 +52,14 @@ checks the diff against. Neither needs configuring to find the other.
 /verify docs/plans/…  # gates, conformance, defect hunt → fix the blockers
 ```
 
-Both can be **crosschecked**: one read-only consultation of the *other* CLI
-agent — Codex when you are in Claude Code, Claude when you are in Codex. That is
-the one thing a bigger budget on your own model cannot buy.
+**Name the plan on the `verify` call.** It ranks your host's own plan-mode
+artifact above `docs/plans/`, so a bare `/verify` can pick up a scratch file
+from the same session — newer, and not what `blueprint` wrote.
+
+Both ends can be **crosschecked**: one read-only consultation of the *other* CLI
+agent — Codex when you are in Claude Code, Claude when you are in Codex. It is
+the one thing a bigger budget on your own model cannot buy, and the only part of
+this repo that depends on something other than Node.
 
 ---
 
@@ -160,6 +166,46 @@ finding costs a fix round, a re-verification and your attention.
 Drop that in `.claude/verify.json` (this repo) or `~/.claude/verify.json` (everywhere). Full reference: [`references/config.md`](./skills/verify/references/config.md).
 
 Full documentation lives with the skill: [`skills/verify/`](./skills/verify).
+
+---
+
+### crosscheck
+
+Not a skill — an option on both of them.
+
+```
+/blueprint crosscheck   # the other agent challenges the plan before you approve it
+/verify crosscheck      # the other agent gets a second look at the diff
+```
+
+Every other lens either skill offers is the same model looking at the same work
+differently. This one is a **different model looking at it at all**, in a
+read-only sandbox, with no ability to write, approve, or consult a peer of its
+own.
+
+What makes it worth the tokens is that the peer has to *read the repository* and
+cite what it read. A second model reasoning from the same prose is a second
+autocomplete; one that has to produce a path, a line, and the text at that line
+is doing something your own model cannot do for you. Every citation is checked
+before you ever see the objection — path resolves, line exists, quoted text is
+actually there — and an objection whose citation does not hold up is dropped
+rather than shown with a caveat.
+
+The peer never renders a verdict. In `blueprint` its objections are adjudicated
+against your locked constraints and the repo, and an accepted one has to change
+the plan visibly. In `verify` they are candidates like any other and face the
+same skeptics.
+
+It needs the other CLI installed and authenticated, which is the one dependency
+here that is not Node. When it is missing, unauthenticated, or slow, the run
+completes anyway and says it was **not** crosschecked — in the report file as
+well as on screen. That word is the whole point; a run that never reached the
+peer must not read as one the peer signed off on.
+
+Costs one agent plus a skeptic per surviving objection, and roughly 8–25k tokens.
+Skip it for a local reversible change with one obvious target: it earns its keep
+when a wrong plan means expensive rework — migrations, auth, public contracts,
+concurrency, or a repo you do not know well.
 
 ---
 
