@@ -1,3 +1,15 @@
+# [1.2.0](https://github.com/maxgfr/skills/compare/v1.1.2...v1.2.0) (2026-09-01)
+
+
+### Bug Fixes
+
+* close the seams between blueprint, verify and the peer crosscheck ([eb3e276](https://github.com/maxgfr/skills/commit/eb3e276fdf52093b4b59e4bae4209eca6dda2d2f))
+
+
+### Features
+
+* add blueprint, and an opt-in peer crosscheck for both skills ([c022f7e](https://github.com/maxgfr/skills/commit/c022f7e77a8a4e0a761c992ba2bddac5e2dde6f9))
+
 ## [1.1.2](https://github.com/maxgfr/skills/compare/v1.1.1...v1.1.2) (2026-08-25)
 
 

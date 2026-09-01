@@ -1,6 +1,6 @@
 {
   "name": "maxgfr",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "My agent skills — process skills that change how an agent works. Installs its skills under the maxgfr: namespace, so verify is invoked as maxgfr:verify.",
   "author": {
     "name": "maxgfr",
