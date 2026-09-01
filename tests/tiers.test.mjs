@@ -45,6 +45,15 @@ test('ultralight runs the gates and nothing else', () => {
   assert.deepEqual([t.lanes.spec, t.lanes.defects, t.lanes.behavior], [false, false, 'off'])
 })
 
+test('no tier turns the peer crosscheck on by itself', () => {
+  // Lane E spends a second vendor's tokens. Every other lane may be switched on
+  // by picking a tier; this one may only be switched on by asking for it, so
+  // `/verify deep` can never quietly start billing an OpenAI account.
+  for (const name of TIER_NAMES) {
+    assert.equal(resolveTier(name).lanes.peer, false, `${name} must not enable lane E`)
+  }
+})
+
 test('no tier can skip refutation — both panels floor at one', () => {
   for (const [name, t] of Object.entries(TIERS)) {
     assert.ok(t.judges.panel >= 1, `${name} panel`)

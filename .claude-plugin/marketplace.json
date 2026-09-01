@@ -10,7 +10,7 @@
     {
       "name": "maxgfr",
       "source": "./",
-      "description": "My agent skills, starting with verify: prove that what an agent just built actually works. Skills land under the maxgfr: namespace.",
+      "description": "My agent skills: blueprint plans a change before it is built, verify proves it works once it is. Either can be crosschecked against the other CLI agent. Skills land under the maxgfr: namespace.",
       "homepage": "https://github.com/maxgfr/skills",
       "license": "MIT",
       "category": "engineering",
@@ -19,6 +19,7 @@
         "testing",
         "code-review",
         "quality-gate",
+        "planning",
         "engineering"
       ]
     }

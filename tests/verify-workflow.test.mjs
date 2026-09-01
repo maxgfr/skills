@@ -556,11 +556,11 @@ test('a non-blocking gate does not sink the verdict on its own', async () => {
   assert.ok(result.findings.length > 0, 'but its failure is still reported')
 })
 
-test('every tier names all four lanes — an unnamed lane is ON', async () => {
+test('every tier names all five lanes — an unnamed lane is ON', async () => {
   for (const [name, preset] of Object.entries(TIERS)) {
     assert.deepEqual(
       Object.keys(preset.lanes).sort(),
-      ['behavior', 'defects', 'gates', 'spec'],
+      ['behavior', 'defects', 'gates', 'peer', 'spec'],
       `${name} leaves a lane unnamed; note a MISSING behavior key resolves to "quick", not "off"`,
     )
   }
@@ -614,4 +614,126 @@ test('pinning one stage reaches that stage and no other', async () => {
   const finders = seen.filter((o) => o.label.startsWith('find:'))
   assert.ok(finders.length > 0 && finders.every((o) => o.model === 'fable'))
   assert.ok(seen.filter((o) => o.label === 'gates').every((o) => o.model === undefined))
+})
+
+// ------------------------------------------------------------------- lane E
+
+// Lane C stays on: with spec, defects and behavior all off the workflow
+// synthesizes the matrix, no gate is dispatched, and every verdict below would
+// be UNPROVEN for a reason that has nothing to do with the peer.
+const PEER_LANES = { gates: true, spec: false, defects: true, behavior: 'off', peer: true }
+
+test('lane E does not run unless it was asked for', async () => {
+  // Not merely "defaults to off". The other lanes are gated on `!== false`, so
+  // an omitted key runs them; lane E is gated on `=== true` precisely so a
+  // partial config cannot start spending a second vendor's tokens. Both shapes.
+  for (const lanes of [
+    { gates: true, spec: false, defects: false, behavior: 'off' },
+    { gates: true, spec: false, defects: false, behavior: 'off', peer: false },
+  ]) {
+    const { calls } = await run(
+      { config: { lanes, loop: { enabled: false }, finders: ['correctness'] } },
+      { matrix: BASE_MATRIX, gates: PASSING_GATES, report: 'written' },
+    )
+    assert.ok(!calls.includes('peer:crosscheck'), `lane E ran with lanes=${JSON.stringify(lanes)}`)
+  }
+})
+
+test('a peer finding is dispatched, judged, and can sink the verdict', async () => {
+  const { result, calls } = await run(
+    { config: { lanes: PEER_LANES, loop: { enabled: false }, finders: ['correctness'] } },
+    {
+      matrix: BASE_MATRIX,
+      gates: PASSING_GATES,
+      'find:': { findings: [] },
+      'peer:crosscheck': {
+        peer_status: 'ok',
+        findings: [
+          {
+            file: 'src/app.ts',
+            line: 2,
+            defect: 'parse never validates input',
+            failure_scenario: 'a null input reaches the sink',
+            severity: 'blocking',
+          },
+        ],
+      },
+      // The peer gets no exemption from law 2. Its finding survives only because
+      // this skeptic failed to refute it.
+      'judge:': { refuted: false, reason: 'reachable', severity_adjustment: 'none' },
+      report: 'written',
+    },
+  )
+  assert.ok(calls.includes('peer:crosscheck'), 'lane E never dispatched')
+  assert.ok(calls.some((c) => c.startsWith('judge:')), 'the peer finding skipped the skeptic')
+  assert.equal(result.verdict, 'FAIL')
+  assert.equal(result.findings[0].found_by[0], 'peer')
+})
+
+test('a peer finding a skeptic refutes does not reach the report', async () => {
+  const { result } = await run(
+    { config: { lanes: PEER_LANES, loop: { enabled: false }, finders: ['correctness'] } },
+    {
+      matrix: BASE_MATRIX,
+      gates: PASSING_GATES,
+      'find:': { findings: [] },
+      'peer:crosscheck': {
+        peer_status: 'ok',
+        findings: [
+          { file: 'src/app.ts', line: 2, defect: 'invented', failure_scenario: 'none', severity: 'blocking' },
+        ],
+      },
+      'judge:': { refuted: true, reason: 'the guard is three lines up', severity_adjustment: 'none' },
+      report: 'written',
+    },
+  )
+  assert.equal(result.verdict, 'PASS')
+  assert.equal(result.refuted_count, 1)
+})
+
+test('an unreachable peer is named in residual risk, and never passes as crosschecked', async () => {
+  // The whole value of the word. A run that never reached the peer must not be
+  // indistinguishable from one where the peer looked and found nothing.
+  const { result } = await run(
+    { config: { lanes: PEER_LANES, loop: { enabled: false }, finders: ['correctness'] } },
+    {
+      matrix: BASE_MATRIX,
+      gates: PASSING_GATES,
+      'find:': { findings: [] },
+      'peer:crosscheck': { peer_status: 'peer_unavailable', reason: 'codex is not authenticated', findings: [] },
+      report: 'written',
+    },
+  )
+  assert.ok(
+    result.residual_risk.some((r) => /not crosschecked/.test(r)),
+    `residual risk did not name the failed crosscheck: ${JSON.stringify(result.residual_risk)}`,
+  )
+  assert.equal(result.counts.blocking, 0, 'an unreachable peer must not contribute findings')
+})
+
+test('a peer that answered cleanly leaves no crosscheck warning behind', async () => {
+  // The other direction of the same rule: a guard that only ever warns is one
+  // nobody proved stays quiet when it should.
+  const { result } = await run(
+    { config: { lanes: PEER_LANES, loop: { enabled: false }, finders: ['correctness'] } },
+    {
+      matrix: BASE_MATRIX,
+      gates: PASSING_GATES,
+      'find:': { findings: [] },
+      'peer:crosscheck': { peer_status: 'ok', findings: [] },
+      report: 'written',
+    },
+  )
+  assert.ok(!result.residual_risk.some((r) => /crosscheck/.test(r)))
+})
+
+test('a lane E that died contributes nothing and is not read as a clean crosscheck', async () => {
+  // The stub returns null for an unscripted label — the harness's way of
+  // modelling a lane that threw.
+  const { result } = await run(
+    { config: { lanes: PEER_LANES, loop: { enabled: false }, finders: ['correctness'] } },
+    { matrix: BASE_MATRIX, gates: PASSING_GATES, report: 'written' },
+  )
+  assert.ok(result.lane_failures.some((f) => f.kind === 'peer'))
+  assert.ok(result.residual_risk.some((r) => /not crosschecked/.test(r)))
 })

@@ -18,6 +18,7 @@
     "skills"
   ],
   "skills": [
+    "./skills/blueprint",
     "./skills/verify"
   ]
 }

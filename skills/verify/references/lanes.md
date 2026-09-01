@@ -115,6 +115,38 @@ A test written alongside the fix and never seen to fail proves the code compiles
 
 ---
 
+## Lane E — peer crosscheck
+
+**Off in every tier.** Runs only when the user asks (`/verify crosscheck`, which
+sets `lanes.peer`). It spends a second vendor's tokens, so it never switches
+itself on.
+
+Every other lane is this model looking at the diff through a different lens. This
+one is a *different model* looking at it at all — which is the only thing here
+that a bigger budget on the same model cannot buy.
+
+The brief, the schema and the adjudication rules live in
+[`references/crosscheck.md`](crosscheck.md), shared byte-for-byte with the
+`blueprint` skill. The lane agent's whole job is to run the engine and carry back
+what it said:
+
+**Brief:**
+
+> Build the diff brief exactly as written in `references/crosscheck.md`, write it to a file, then run `scripts/peer-run.mjs --mode diff` with the host you are running inside.
+>
+> Report `peer_status` exactly as the script gave it. If it is not `"ok"`, return no findings: do not retry, do not review the diff yourself, and do not present your own reading as the peer's.
+>
+> If it is `"ok"`, translate each surviving finding into the standard finding shape — `location.path` → `file`, `location.line` → `line`, `claim` → `defect`, `material` → `major` — and change nothing else.
+>
+> You are a courier, not a reviewer. Do not add findings, drop ones you disagree with, or soften a claim.
+
+The engine has already dropped every finding whose citation did not resolve to
+the file, the line and the quoted text. Those are listed in
+`rejected_citations`, and they do not come back — a fabricated line does not
+improve by being mentioned with a caveat.
+
+---
+
 ## What comes out
 
-Lane A → the evidence table, directly. Lanes B, C, D → candidate findings, all of which go to Phase 3 before anyone sees them.
+Lane A → the evidence table, directly. Lanes B, C, D, E → candidate findings, all of which go to Phase 3 before anyone sees them. **The peer gets no exemption from law 2**: a second model's opinion is still an opinion, and it faces the same skeptic as everything else.

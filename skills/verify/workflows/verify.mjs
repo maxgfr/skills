@@ -167,6 +167,21 @@ const FINDINGS_SCHEMA = {
   },
 }
 
+// Lane E returns findings plus the one fact findings alone cannot carry: whether
+// the peer answered at all. Without it, "the peer found nothing" and "the peer
+// was never reached" arrive as the same empty array — and the second one has to
+// reach RESIDUAL RISK, because a crosscheck that did not happen is not a clean
+// crosscheck.
+const PEER_SCHEMA = {
+  type: 'object',
+  required: ['peer_status', 'findings'],
+  properties: {
+    peer_status: { type: 'string', enum: ['ok', 'peer_unavailable', 'peer_output_invalid'] },
+    reason: { type: 'string' },
+    findings: FINDINGS_SCHEMA.properties.findings,
+  },
+}
+
 const SPEC_SCHEMA = {
   type: 'object',
   required: ['verdicts'],
@@ -534,6 +549,39 @@ Return behavior_id "red-green" and proven "true" if every audited test went red,
   }
 }
 
+// Lane E — peer crosscheck. Opt-in only (`peer: true`), never inherited from a
+// partial `lanes` object: it spends a second vendor's tokens, and a lane that
+// costs money elsewhere may not switch itself on by defaulting.
+//
+// It is not a finder. It contributes candidates like any other lane and they
+// face the same skeptics in Phase 3 — a second model's opinion is still an
+// opinion, and law 2 has no vendor exemption.
+if (lanes.peer === true) {
+  push('peer', 'peer:crosscheck', () =>
+    agent(
+      `${CONTEXT}
+
+Consult the other CLI agent for an independent second opinion on this diff, then report what it said.
+
+1. Read ${skillDir}/references/crosscheck.md. Build the diff brief exactly as written there, substituting the repo root, the fixed point and the intended change. Write it to ${reportDir}/peer-prompt.txt.
+2. Run, from ${cwd}:
+
+   node ${skillDir}/scripts/peer-run.mjs --host ${A.host || 'claude'} --mode diff --cwd ${cwd} --prompt ${reportDir}/peer-prompt.txt --schema ${skillDir}/scripts/schema-diff.json --out ${reportDir}/peer
+
+3. Read the JSON it prints on stdout. It has already dropped every finding whose citation did not hold up; those are listed in \`rejected_citations\` and you must not resurrect them.
+
+Return \`peer_status\` exactly as the script reported it, plus \`reason\` when it is not "ok".
+
+If \`status\` is anything other than "ok", return an empty findings array. Do not retry, do not fall back to reviewing the diff yourself, and do not describe your own reading as a peer opinion — the lane reporting nothing is the correct outcome, and the report says the crosscheck did not happen.
+
+If \`status\` is "ok", translate each surviving finding into this shape, changing nothing about its substance: file = location.path, line = location.line, defect = claim, failure_scenario, severity ("blocking" stays blocking, "material" becomes "major"), suggested_fix.
+
+Report only what the peer actually returned. You are a courier here, not a reviewer: do not add findings of your own, drop ones you disagree with, or soften a claim. A skeptic judges them next.`,
+      { schema: PEER_SCHEMA, model: mdl('finders'), effort: eff('finders'), label: 'peer:crosscheck', phase: 'Lanes' },
+    ),
+  )
+}
+
 const laneResults = await parallel(tasks)
 
 const gateResults = []
@@ -542,6 +590,10 @@ const outOfScope = []
 const behaviors = []
 const redGreen = []
 let candidates = []
+// Null when lane E never ran, so an ordinary run says nothing about a
+// crosscheck nobody asked for.
+let peerStatus = lanes.peer === true ? 'peer_unavailable' : null
+let peerReason = lanes.peer === true ? 'the lane returned nothing' : ''
 
 // A lane that died is not a lane that found nothing. Track the failures so the
 // report names them instead of quietly showing an empty section.
@@ -558,7 +610,14 @@ laneResults.forEach((res, i) => {
   } else if (kind === 'spec') {
     specVerdicts.push(...(res.verdicts || []))
     outOfScope.push(...(res.out_of_scope || []))
-  } else if (kind === 'defects') {
+  } else if (kind === 'defects' || kind === 'peer') {
+    if (kind === 'peer') {
+      peerStatus = res.peer_status || 'peer_output_invalid'
+      peerReason = res.reason || ''
+      // A peer that could not be reached returns no candidates. Anything the
+      // lane still carries in that case did not come from the peer.
+      if (peerStatus !== 'ok') return
+    }
     candidates.push(...(res.findings || []).map((f) => ({ ...f, found_by: [kinds[i]] })))
   } else if (kind === 'behavior') {
     behaviors.push(res)
@@ -1052,6 +1111,11 @@ const residualRisk = [
   ...(lanes.spec === false ? ['plan conformance — lane not run'] : []),
   ...(lanes.defects === false ? ['defect hunt — lane not run'] : []),
   ...(behaviorMode === 'off' ? ['behaviour proof — nothing was run to prove it works'] : []),
+  // Asked for and not delivered. Silence here would let a run that never
+  // reached the peer be read as one the peer signed off on.
+  ...(peerStatus && peerStatus !== 'ok'
+    ? [`peer crosscheck did not happen (${peerStatus}${peerReason ? `: ${peerReason}` : ''}) — this run was not crosschecked`]
+    : []),
   ...(synthesizeMatrix
     ? ['gates were not filtered to the diff — an unrelated pre-existing failure fails this run']
     : []),

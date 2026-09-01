@@ -29,6 +29,25 @@ Then add `"./skills/<name>"` to `.claude-plugin/plugin.json`, add a row to the R
 
 Read [AGENTS.md](./AGENTS.md) before writing the body — it covers what belongs in `SKILL.md` versus `references/`, and why anything with a right answer belongs in a script rather than a prompt.
 
+## Changing the crosscheck
+
+Four files ship twice, byte-identical in `blueprint` and `verify`:
+
+```
+references/crosscheck.md   scripts/peer-run.mjs
+scripts/schema-plan.json   scripts/schema-diff.json
+```
+
+That is deliberate. A skill installed on its own with `--skill blueprint` has to
+be complete, and a relative link into a sibling directory would install as a
+dangling reference — the exact failure `npm run validate` exists to catch.
+
+So edit one copy and `cp` it to the other. `tests/crosscheck-sync.test.mjs`
+fails if you forget. Do not solve this by moving the files to a shared directory
+and pointing `../` at them: it passes validation today only because the
+reference resolver does not implement the containment check its own comment
+describes.
+
 ## Changing behaviour
 
 The commit message is the release. semantic-release reads the history on `main`

@@ -33,6 +33,7 @@ produce more candidates, which produce more skeptics, so the two multiply.
 | `/verify deep` | ~13 + 1–3/candidate | every lens, red-green audit, panels throughout |
 | `/verify ultralight` | 1 | Gates only. No defect hunt, no plan check. Opt in when that is the question. |
 | `/verify report` | — | Read-only, any tier. Follow with "fix" to apply the blockers once. |
+| `/verify crosscheck` | +1 + 1/candidate | + lane E — a second opinion from the *other* CLI agent, on any tier. |
 | `/verify <ref>` | — | Explicit fixed point (`main`, a SHA, `HEAD~3`). |
 
 Skeptics are spawned per candidate, so cost scales with what the finders turn up,
@@ -81,10 +82,23 @@ Read `references/lanes.md` for what each lane does and the exact sub-agent brief
 | Phase | What | Runs at |
 |---|---|---|
 | 1 · Matrix | Turn the plan + diff into a targeted verification matrix (`references/matrix.md`) | `normal`+ |
-| 2 · Lanes | **A** gates — always · **B** plan conformance · **C** defect hunt · **D** behaviour proof — in parallel, isolated | per tier |
+| 2 · Lanes | **A** gates — always · **B** plan conformance · **C** defect hunt · **D** behaviour proof · **E** peer crosscheck | per tier |
 | 3 · Judging | Refute every candidate finding (`references/judging.md`) | when there are candidates |
 | 4 · Verdict | Compact report up, full detail to disk | when there is detail |
 | 5 · Loop | Fix blockers, re-run impacted gates, repeat (`references/fix-loop.md`) | when something is broken |
+
+**Lane E is opt-in and off in every tier** (`lanes.peer`, set by
+`/verify crosscheck`). It asks the *other* CLI agent — Codex when you are in
+Claude Code, Claude when you are in Codex — for a second opinion on the diff, in
+a read-only sandbox. Its findings are candidates like any other: they face the
+same skeptics, and the peer never returns a verdict. `references/crosscheck.md`
+holds the brief, the schema and the adjudication rules; the engine is
+`scripts/peer-run.mjs`, which checks every `path:line` the peer cites and drops
+the objections that do not hold up.
+
+**A crosscheck that did not happen is named in `RESIDUAL RISK`, never omitted.**
+An unreachable peer costs nothing and changes no verdict — but a run that never
+reached it must not be reported as one the peer signed off on.
 
 **Every stage inherits your session's model**; pinning is opt-in, and pinning the
 finders or judges *down* is the false economy — a wrong finding costs a fix
@@ -160,3 +174,4 @@ path to a file nobody wrote.
 | "One `@ts-ignore` and the gate is green" | That is the repair the loop exists to refuse. |
 | "The plan was wrong, I'll update it" | Escalate. Rewriting the promise is not verification. |
 | "Nothing to report, everything passed" | Then name what you could not verify. There is always something. |
+| "The peer was down, but I reviewed it myself" | Then it was not crosschecked. Say that word only when it happened. |

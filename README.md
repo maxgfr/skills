@@ -4,7 +4,7 @@ My agent skills. One install, one place to keep them.
 
 They are process skills: they change how an agent works rather than what it knows. Small, composable, and meant to be hacked on — install them, read them, make them yours.
 
-The set grows. Today it is one skill, chosen because it closes the loop that costs the most: an agent tells you it is done, is wrong often enough that you check anyway, and finds something every time you ask for another pass.
+The set grows. Today it is the two ends of one loop: an agent tells you it is done, is wrong often enough that you check anyway — and is wrong at least as often *before* that, having planned against a repo it half-remembered and a decision you never made.
 
 ## Install
 
@@ -31,14 +31,61 @@ Installing takes the whole set, or pick what you want:
 
 ```bash
 npx skills add maxgfr/skills --list          # browse first
-npx skills add maxgfr/skills --skill verify  # take one
+npx skills add maxgfr/skills --skill verify  # take one — each is self-contained
 ```
 
 ## Skills
 
 | Skill | What it does |
 |---|---|
+| [`blueprint`](./skills/blueprint) | Interrogates you, grounds the design in the repo, and writes the plan `verify` will hold the work to. |
 | [`verify`](./skills/verify) | Proves that work just produced actually works, then fixes the blockers. |
+
+They are two ends of one loop. `blueprint` writes the promise to
+`docs/plans/<date>-<slug>.md`; `verify` reads that same file as the promise it
+checks the diff against. Neither needs configuring to find the other.
+
+```
+/blueprint            # grill → ground → write the plan → approve
+                      # then /clear, and implement from the file
+/verify docs/plans/…  # gates, conformance, defect hunt → fix the blockers
+```
+
+Both can be **crosschecked**: one read-only consultation of the *other* CLI
+agent — Codex when you are in Claude Code, Claude when you are in Codex. That is
+the one thing a bigger budget on your own model cannot buy.
+
+---
+
+### blueprint
+
+```
+/blueprint              # the full pass
+/blueprint grill        # the interview only — no design, no artifact
+/blueprint crosscheck   # + the other agent challenges the plan before you approve it
+/blueprint <path>       # harden a plan that already exists
+```
+
+Plans fail in two ways: they answer a question you never agreed to, or they
+assert something about the repo that is not true. The skill is built against
+both.
+
+The interview is a **design tree**. Its frontier is every decision whose
+prerequisites are already settled — those get asked *now*, as one numbered round
+with a recommended answer on each, so a round can be answered in a line. Answers
+push the frontier outward. It stops when the frontier is empty, which is a
+structural condition rather than a judgement about having asked enough. Finding
+facts is never your job: a question the repository can answer is one the skill
+goes and reads.
+
+Every answer becomes a locked `Q-xxx` constraint in the artifact, every fact a
+cited `path:line`, and every step a `S-xxx` with an exact command and a binary
+completion criterion. The plan is written to be executed by an agent that was
+not in the conversation — which is what makes `/clear` before implementing safe,
+and the skill checks that it really is self-contained before suggesting it.
+
+The interview owes its shape to [Matt Pocock's `grilling`](https://github.com/mattpocock/skills);
+the artifact owes its task blocks to superpowers' `writing-plans`.
 
 ---
 
@@ -50,6 +97,7 @@ npx skills add maxgfr/skills --skill verify  # take one
 /verify deep         # every lens, panels throughout, red-green audit
 /verify ultralight   # gates only — no defect hunt, no plan check
 /verify report       # read-only verdict, no writes
+/verify crosscheck   # + lane E — a second opinion from the other CLI agent
 /verify main         # explicit fixed point
 ```
 
@@ -129,9 +177,18 @@ The engines ship with the skills and run on their own:
 ```bash
 node skills/verify/scripts/detect-gates.mjs --cwd . --pretty   # what "green" means here
 git diff | node skills/verify/scripts/forbidden-repairs.mjs    # did that fix cheat?
+node skills/blueprint/scripts/peer-run.mjs --host claude …     # ask the other agent
 ```
 
-Both are deterministic, dependency-free, and covered by tests. They work outside the skill too — `forbidden-repairs.mjs` on a PR diff is a reasonable CI step on its own.
+All three are deterministic, dependency-free, and covered by tests. They work outside the skill too — `forbidden-repairs.mjs` on a PR diff is a reasonable CI step on its own.
+
+`peer-run.mjs` ships **twice**, byte-identical in both skills, so that
+`--skill blueprint` and `--skill verify` each install something complete. A test
+fails if the copies drift. What it owns is everything with a right answer: which
+binary, which read-only flags, how long to wait — and whether the `path:line` the
+peer cited actually contains the text it quoted. A citation that does not resolve
+drops its objection before anyone argues about it, because a fabricated line does
+not get better by being mentioned with a caveat.
 
 ## My other skills
 

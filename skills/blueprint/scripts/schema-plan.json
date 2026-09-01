@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "context_error", "files_read", "objections"],
+  "properties": {
+    "status": { "type": "string", "enum": ["ok", "insufficient_context"] },
+    "context_error": { "type": "string" },
+    "files_read": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "objections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "target_ids",
+          "severity",
+          "category",
+          "claim",
+          "failure_mode",
+          "evidence",
+          "proposed_change"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "target_ids": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "severity": { "type": "string", "enum": ["blocking", "material"] },
+          "category": {
+            "type": "string",
+            "enum": [
+              "repository_fact",
+              "missing_step",
+              "ordering",
+              "interface",
+              "wiring",
+              "failure_handling",
+              "scope",
+              "verification"
+            ]
+          },
+          "claim": { "type": "string" },
+          "failure_mode": { "type": "string" },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "locator", "quote", "supports"],
+              "properties": {
+                "kind": { "type": "string", "enum": ["repository", "plan"] },
+                "locator": { "type": "string" },
+                "quote": { "type": "string" },
+                "supports": { "type": "string" }
+              }
+            }
+          },
+          "proposed_change": { "type": "string" }
+        }
+      }
+    }
+  }
+}

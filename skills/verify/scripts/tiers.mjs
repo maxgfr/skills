@@ -17,7 +17,9 @@
 //   2. Lane gating is opt-out (`lanes.gates !== false`), and a MISSING
 //      `behavior` key resolves to "quick", not "off". A partial `lanes` object
 //      therefore leaves lanes running that the tier meant to disable, so every
-//      tier spells out all four keys.
+//      tier spells out all five keys. `peer` is the exception that proves it:
+//      lane E is opt-IN (`lanes.peer === true`), because it spends a second
+//      vendor's tokens and no tier should do that by inheriting a default.
 //
 // Usage:
 //   node tiers.mjs                 # every tier, as JSON
@@ -45,7 +47,7 @@ export const TIERS = {
   // law 2 holds by construction. It is not a defect hunt and not a merge gate —
   // opt in when the gates really are the question, not as a default.
   ultralight: {
-    lanes: { gates: true, spec: false, defects: false, behavior: 'off' },
+    lanes: { gates: true, spec: false, defects: false, behavior: 'off', peer: false },
     finders: ['correctness'], // never used — lane C is off — but see note 1 above
     judges: { panel: 1, panel_blocking: 1 },
     effort: { gates: 'low', planner: 'low', finders: 'medium', judges: 'medium' },
@@ -59,19 +61,19 @@ export const TIERS = {
   // The spec lane carries its own data guard: with no promise to check against,
   // the matrix produces no requirements and the lane costs nothing.
   light: {
-    lanes: { gates: true, spec: true, defects: true, behavior: 'off' },
+    lanes: { gates: true, spec: true, defects: true, behavior: 'off', peer: false },
     finders: ['correctness', 'failure-handling', 'wiring'],
     judges: { panel: 1, panel_blocking: 1 },
     effort: { gates: 'low', planner: 'low', finders: 'medium', judges: 'medium' },
   },
   normal: {
-    lanes: { gates: true, spec: true, defects: true, behavior: 'quick' },
+    lanes: { gates: true, spec: true, defects: true, behavior: 'quick', peer: false },
     finders: ['correctness', 'failure-handling', 'wiring', 'leftovers'],
     judges: { panel: 1, panel_blocking: 3 },
     effort: { gates: 'low', planner: 'low', finders: 'high', judges: 'high' },
   },
   deep: {
-    lanes: { gates: true, spec: true, defects: true, behavior: 'full' },
+    lanes: { gates: true, spec: true, defects: true, behavior: 'full', peer: false },
     finders: [...LENS_NAMES],
     judges: { panel: 1, panel_blocking: 3 },
     effort: { gates: 'low', planner: 'low', finders: 'high', judges: 'high' },
