@@ -31,10 +31,19 @@ node scripts/peer-run.mjs --host claude|codex --mode plan|diff \
 `--host` is **the host you are running inside**, stated explicitly. The script
 never sniffs the environment for it: `CODEX_HOME`, `~/.claude` and
 `command -v codex` say what is installed, not what is running. The peer is the
-other one.
+other one — so a wrong `--host` asks a CLI to consult itself, which is not a
+crosscheck at all. You know which host you are. If you genuinely cannot tell,
+degrade rather than guess.
 
 Write the prompt to a file and pass its path. It goes to the peer on stdin, so
-size and quoting are not your problem.
+size and quoting are not your problem. Relative `--schema`, `--prompt` and
+`--out` are resolved against *your* working directory, not the repo under
+review; the script rewrites them before the peer ever sees them.
+
+`--out` differs by caller, so that each skill's artifacts sit with the rest of
+its run: `blueprint` uses `.agents/crosscheck/<timestamp>-<mode>/`, and `verify`
+nests it under the run directory it already made (`<report.dir>/<timestamp>/peer/`).
+Both are git-ignored.
 
 Three outcomes on stdout:
 

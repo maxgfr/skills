@@ -68,10 +68,13 @@ Cheap, and it fails fast before any agent is spent.
 
    **Untracked files appear in no diff.** Always run `git status --porcelain` alongside the diff and pass the `??` paths to the lanes as whole-file additions — a brand-new module is invisible to `git diff` and is exactly where new defects live. Do not `git add -N` to force them into the diff: that mutates the index behind the user's back.
 2. **The promise.** In order: a path the user gave → the active host's plan artifact (Codex: the current conversation plan; Claude Code: the most recently modified file in `~/.claude/plans/` newer than the fixed point) → `docs/plans/`, `docs/superpowers/plans/`, `specs/`, `.scratch/` → an issue referenced in the commits (`gh issue view`) → none, in which case the spec lane runs on intent inferred from the diff and **the report says so**.
+
+   The host's own plan artifact ranks above `docs/plans/`, so a `blueprint` plan is named on the invocation (`/verify docs/plans/<file>`) rather than left to discovery — otherwise a stale plan-mode scratch file from the same session, which is newer, wins. If you find a `docs/plans/` file carrying `status: approved` frontmatter and the user named no path, say which promise you picked before spending an agent on it.
 3. **The gates.** `node scripts/detect-gates.mjs --cwd <repo> --pretty`. Deterministic, no model. It reads lockfiles, manifests, and `.github/workflows/` — the CI is the repo's own definition of green.
-4. **The config.** `node scripts/tiers.mjs <tier>` ← user config (`$VERIFY_CONFIG`, then `$CODEX_HOME/verify.json` on Codex or `~/.claude/verify.json` on Claude Code) ← repo config (`<repo>/.agents/verify.json`, with `<repo>/.claude/verify.json` retained as the Claude-compatible legacy location) ← flags. **Run the script**; transcribing the table by hand is how a `lanes` object loses a key — which leaves that lane **on** — or gains an empty `finders` array, which runs **all six** lenses. Resolve everything into concrete values here; the lanes receive values, not policy. Apply `gates.extra` / `gates.skip` to the detected list, and pass the tier name through: the report has to state which one ran. A bare word is a tier before it is a ref (`light`, `normal`, `deep`, `ultralight`, `report`); an ambiguous branch needs `--ref light`. **If the detector found no gate, do not run `ultralight`** — it would spend zero agents and report `UNPROVEN` over nothing. Escalate to `light` and say why.
+4. **The config.** `node scripts/tiers.mjs <tier>` ← user config (`$VERIFY_CONFIG`, then `$CODEX_HOME/verify.json` on Codex or `~/.claude/verify.json` on Claude Code) ← repo config (`<repo>/.agents/verify.json`, with `<repo>/.claude/verify.json` retained as the Claude-compatible legacy location) ← flags. **Run the script**; transcribing the table by hand is how a `lanes` object loses a key — which leaves that lane **on** — or gains an empty `finders` array, which runs **all six** lenses. Resolve everything into concrete values here; the lanes receive values, not policy. Apply `gates.extra` / `gates.skip` to the detected list, and pass the tier name through: the report has to state which one ran. A bare word is a tier before it is a ref (`light`, `normal`, `deep`, `ultralight`, `report`); an ambiguous branch needs `--ref light`. **`crosscheck` is none of those** — it is a modifier that sets `lanes.peer = true` on whatever tier was resolved, so `/verify deep crosscheck` is `deep` with lane E on. It is never a tier and never a ref. **If the detector found no gate, do not run `ultralight`** — it would spend zero agents and report `UNPROVEN` over nothing. Escalate to `light` and say why.
 5. **The run directory.** `date +%Y%m%d-%H%M%S` → `<report.dir>/<timestamp>/`. Compute it now and pass it in; a fixed path means each run silently erases the last. Prune here too, deterministically — keep the `keep_runs` most recent directories and delete the rest. Pruning that depends on a model remembering to do it is pruning that stops happening.
 6. **The baseline for the fix loop.** `git stash create` (empty output means a clean tree — use `HEAD`). This dangling SHA is what the loop diffs against to prove it only made the repairs it claims. It touches no ref and no file.
+7. **The host — only when lane E is on.** Pass `host: "claude"` or `host: "codex"`, whichever you are running inside. The peer is the *other* one, so a wrong value asks a CLI to consult itself and a missing one makes the lane guess. **Do not infer it from what is installed**: `CODEX_HOME`, `~/.claude` and `command -v codex` say what exists on the machine, not what is executing. You know which host you are. If you genuinely cannot tell, leave it unset — the lane then reports the crosscheck as not done, which is the honest outcome.
 
 Stop here if the ref does not resolve or the diff is empty. Say so; do not invent work.
 
@@ -88,17 +91,14 @@ Read `references/lanes.md` for what each lane does and the exact sub-agent brief
 | 5 · Loop | Fix blockers, re-run impacted gates, repeat (`references/fix-loop.md`) | when something is broken |
 
 **Lane E is opt-in and off in every tier** (`lanes.peer`, set by
-`/verify crosscheck`). It asks the *other* CLI agent — Codex when you are in
-Claude Code, Claude when you are in Codex — for a second opinion on the diff, in
-a read-only sandbox. Its findings are candidates like any other: they face the
-same skeptics, and the peer never returns a verdict. `references/crosscheck.md`
-holds the brief, the schema and the adjudication rules; the engine is
-`scripts/peer-run.mjs`, which checks every `path:line` the peer cites and drops
-the objections that do not hold up.
+`/verify crosscheck`): a second opinion on the diff from the *other* CLI agent,
+read-only. Its findings are candidates like any other and face the same
+skeptics. Brief, schema and rules: `references/crosscheck.md`.
 
-**A crosscheck that did not happen is named in `RESIDUAL RISK`, never omitted.**
-An unreachable peer costs nothing and changes no verdict — but a run that never
-reached it must not be reported as one the peer signed off on.
+**A crosscheck that did not happen is named in `RESIDUAL RISK`, never omitted** —
+in the report file as well as in the conversation. An unreachable peer costs
+nothing and changes no verdict, but a run that never reached it must not read as
+one the peer signed off on.
 
 **Every stage inherits your session's model**; pinning is opt-in, and pinning the
 finders or judges *down* is the false economy — a wrong finding costs a fix

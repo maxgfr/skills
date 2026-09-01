@@ -79,10 +79,14 @@ and the three self-review passes. Written to
 
 ## Phase 6 — Crosscheck (optional)
 
-`references/crosscheck.md`. Freeze the plan first, then run
-`scripts/peer-run.mjs`. Accepted objections visibly change the plan; deferred
-material ones block approval; rejected ones stay in the appendix and never enter
-the executable sections.
+`references/crosscheck.md`. Freeze the plan first — write it to disk before you
+consult, or "adjudication" is just rewriting your position to match the reply
+and you will not be able to tell. Then run `scripts/peer-run.mjs --mode plan`,
+passing `--host` as the agent you are running inside; the peer is the other one.
+
+Accepted objections visibly change the plan; deferred material ones block
+approval; rejected ones stay in the appendix and never enter the executable
+sections.
 
 If the peer is unavailable, say so and proceed host-only — unless the user asked
 for the crosscheck, in which case stop rather than relabel your own review.
@@ -90,8 +94,16 @@ for the crosscheck, in which case stop rather than relabel your own review.
 ## Phase 7 — Approve, then hand off
 
 Present the artifact and ask for approval in as many words. Earlier enthusiasm
-for the idea is not approval of a plan they had not yet seen. Nothing is
-implemented, no worktree is made, no command that writes is run before a yes.
+for the idea is not approval of a plan they had not yet seen.
+
+Before that yes: **nothing is implemented, no source file is touched, no
+worktree is made, nothing is committed, and no command that changes the project
+is run.** The plan itself and the crosscheck's own files are the exception, and
+have to be — the artifact must exist before it can be shown, and freezing it on
+disk before consulting the peer is what makes the adjudication honest. So the
+line is what the write is *for*: `docs/plans/<file>` and
+`.agents/crosscheck/…` are the deliverable, everything else is the work, and
+the work waits.
 
 Then offer the handoff, because the plan being self-contained is what makes this
 safe:
@@ -105,7 +117,9 @@ it. If a step still leans on something only this conversation knows, that is a
 gap in the plan, not a reason to keep the context.
 
 After implementation: `/verify docs/plans/<file>` reads that same file as the
-promise.
+promise. **Name the path.** `verify` ranks the host's own plan artifact above
+`docs/plans/`, so a bare `/verify` can pick up a plan-mode scratch file from the
+same session — newer, and not what you wrote.
 
 ## What this does not do
 

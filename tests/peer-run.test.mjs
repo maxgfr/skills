@@ -68,6 +68,16 @@ test('the peer is always the other agent', () => {
   assert.equal(PEER_OF.codex, 'claude')
 })
 
+test('an unresolved host degrades instead of guessing one', async () => {
+  // verify's lane E passes the literal string `unresolved` when Phase 0 could
+  // not say which agent it is running inside. Guessing would ask a CLI to
+  // consult itself, so the only safe answer is to decline — with exit 0 and a
+  // status the lane can report, not a crash.
+  const res = await main(['--host', 'unresolved', '--mode', 'diff', '--cwd', '.', '--prompt', 'p', '--schema', 's', '--out', 'o'])
+  assert.equal(res.status, 'peer_unavailable')
+  assert.match(res.reason, /--host must be/)
+})
+
 // -------------------------------------------------------------- the two CLIs
 
 test('the codex invocation is read-only and takes its prompt on stdin', () => {

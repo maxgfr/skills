@@ -566,9 +566,11 @@ Consult the other CLI agent for an independent second opinion on this diff, then
 1. Read ${skillDir}/references/crosscheck.md. Build the diff brief exactly as written there, substituting the repo root, the fixed point and the intended change. Write it to ${reportDir}/peer-prompt.txt.
 2. Run, from ${cwd}:
 
-   node ${skillDir}/scripts/peer-run.mjs --host ${A.host || 'claude'} --mode diff --cwd ${cwd} --prompt ${reportDir}/peer-prompt.txt --schema ${skillDir}/scripts/schema-diff.json --out ${reportDir}/peer
+   node ${skillDir}/scripts/peer-run.mjs --host ${A.host || 'unresolved'} --mode diff --cwd ${cwd} --prompt ${reportDir}/peer-prompt.txt --schema ${skillDir}/scripts/schema-diff.json --out ${reportDir}/peer
 
 3. Read the JSON it prints on stdout. It has already dropped every finding whose citation did not hold up; those are listed in \`rejected_citations\` and you must not resurrect them.
+
+If the host above reads "unresolved", Phase 0 could not say which agent this is running inside. The script will refuse it. Do not substitute a guess: asking a CLI to consult itself is not a crosscheck, and reporting one that did not happen is the single thing this lane must never do.
 
 Return \`peer_status\` exactly as the script reported it, plus \`reason\` when it is not "ok".
 
@@ -855,6 +857,10 @@ const runState = {
   matrix,
   detected_gates: A.gates || {},
   lane_failures: laneFailures,
+  // A lane E that answered "unavailable" did not die, so `lane_failures` stays
+  // empty and the reporter would have no way to know the crosscheck never
+  // happened. The conversation says so; without this the file on disk would not.
+  peer_crosscheck: peerStatus ? { status: peerStatus, reason: peerReason } : null,
   gates: gateResults,
   requirements: { summary: requirementSummary, verdicts: specVerdicts, out_of_scope: outOfScope },
   behaviors,
@@ -883,7 +889,7 @@ if (reportWorthWriting)
    - REQUIREMENTS: the per-requirement verdict table, plus out-of-scope items.
    - BEHAVIOUR: what was proven by running, what was blocked and why. Red-green results if present.
    - REFUTED: each refuted candidate with the skeptic's reason, so a wrong kill is auditable.
-   - RESIDUAL RISK: what was NOT verified and why — gates not run, behaviours blocked, lanes that FAILED (see lane_failures — a lane that died found nothing because it never ran, and that is not the same as a clean result), lanes disabled, requirements checked only by reading.
+   - RESIDUAL RISK: what was NOT verified and why — gates not run, behaviours blocked, lanes that FAILED (see lane_failures — a lane that died found nothing because it never ran, and that is not the same as a clean result), lanes disabled, requirements checked only by reading. If peer_crosscheck is present and its status is not "ok", say the run was NOT crosschecked and give the reason: that lane answered, so it is absent from lane_failures, and silence here would read as a peer that looked and agreed.
 
 2. ${reportDir}/findings.json — the object below, verbatim, as JSON.
 3. ${reportDir}/matrix.json — the matrix field of that object, as JSON.

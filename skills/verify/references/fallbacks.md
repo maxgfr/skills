@@ -21,7 +21,8 @@ Workflow({
     config,      // fully resolved: models, effort, lanes, judges, loop, finders
     reportDir,   // <report.dir>/<YYYYMMDD-HHMMSS>, computed in Phase 0
     baseline,    // git stash create output, for the forbidden-repairs guard
-    skillDir     // so the workflow can invoke this skill's scripts
+    skillDir,    // so the workflow can invoke this skill's scripts
+    host         // "claude" | "codex" — required by lane E, omit when it is off
   }
 })
 ```
@@ -48,7 +49,9 @@ If the workflow fails mid-run, it returns a `runId`. Resume with `Workflow({scri
 No Workflow tool, but a native subagent tool exists (for example Codex's subagent capability). Same phases, dispatched by hand:
 
 1. **Matrix** — one agent, cheap model, returns the matrix JSON. Parse it yourself.
-2. **Lanes** — dispatch in one message so they run concurrently: one gate-runner, one agent per requirement group, one per finder lens, one per behavior claim. Collect the structured returns.
+2. **Lanes** — dispatch in one message so they run concurrently: one gate-runner, one agent per requirement group, one per finder lens, one per behavior claim, and — **only when `lanes.peer` is true** — one for the peer crosscheck. Collect the structured returns.
+
+   Lane E matters most on this tier, because this is the tier Codex runs on: there the peer is `claude -p`, and `--host codex`. Getting that argument backwards asks Codex to consult itself. The lane's brief is in [`lanes.md`](lanes.md) and the engine is `scripts/peer-run.mjs`, which you invoke through Bash exactly as the Workflow tier does — it is a plain Node script and needs no host feature at all.
 3. **Dedup** — in your own head, not in an agent. Merge same-`file:line` candidates.
 4. **Judging** — one message dispatching every skeptic at once. Three for each blocking claim.
 5. **Report** — assemble and write the file yourself.
@@ -74,4 +77,6 @@ The skill installs everywhere `npx skills add` reaches. Two things degrade:
 
 **A worktree needs a commit to branch from.** In a repository with no commits yet, worktree creation fails and lane D produces nothing. Detect this in Phase 0 (`git log` fails) and either skip lane D with that reason recorded, or run its read-only half without isolation. What you must not do is let the lane die quietly: a lane that errored is reported by name under RESIDUAL RISK, because "found nothing" and "never ran" look identical in an empty results list and mean opposite things.
 
-Everything else — the gates, the briefs, the refutation protocol, the forbidden-repairs guard — is host-independent. The two `.mjs` scripts need Node and nothing else.
+- **The peer crosscheck** — lane E needs the *other* CLI installed and authenticated, which is the one dependency in this skill that is not Node. When it is missing, `peer-run.mjs` says so and the lane contributes nothing; the run is still valid and `RESIDUAL RISK` records that it was not crosschecked.
+
+Everything else — the gates, the briefs, the refutation protocol, the forbidden-repairs guard — is host-independent. The three `.mjs` scripts need Node and nothing else.

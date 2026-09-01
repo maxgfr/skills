@@ -711,6 +711,36 @@ test('an unreachable peer is named in residual risk, and never passes as crossch
   assert.equal(result.counts.blocking, 0, 'an unreachable peer must not contribute findings')
 })
 
+test('the report writer is told the crosscheck failed, not just the caller', async () => {
+  // A lane E that answers "unavailable" did not die, so lane_failures is empty
+  // and the reporter has no other signal. Without this the conversation would
+  // say the run was not crosschecked while REPORT.md on disk stayed silent —
+  // and the file is what outlives the session.
+  let reporterSaw = null
+  const { result } = await run(
+    { config: { lanes: PEER_LANES, loop: { enabled: false }, finders: ['correctness'] } },
+    {
+      matrix: BASE_MATRIX,
+      gates: PASSING_GATES,
+      'find:': {
+        findings: [
+          { file: 'src/a.ts', line: 1, defect: 'something', failure_scenario: 'x', severity: 'minor' },
+        ],
+      },
+      'judge:': { refuted: false, reason: 'real', severity_adjustment: 'none' },
+      'peer:crosscheck': { peer_status: 'peer_unavailable', reason: 'codex is not authenticated', findings: [] },
+      report: (prompt) => {
+        reporterSaw = prompt
+        return 'written'
+      },
+    },
+  )
+  assert.ok(result.report_path, 'this run should have written a report')
+  assert.ok(reporterSaw, 'the reporter never ran')
+  assert.match(reporterSaw, /peer_crosscheck/, 'the reporter was not given the peer status')
+  assert.match(reporterSaw, /codex is not authenticated/, 'the reporter was not given the reason')
+})
+
 test('a peer that answered cleanly leaves no crosscheck warning behind', async () => {
   // The other direction of the same rule: a guard that only ever warns is one
   // nobody proved stays quiet when it should.
