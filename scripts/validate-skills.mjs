@@ -39,11 +39,17 @@ export function extractReferences(body) {
   return refs
 }
 
-const problems = []
-const checked = []
+// A model reads the whole SKILL.md every time the skill triggers. Past this
+// many lines the excess belongs in references/, loaded only when a phase needs
+// it — AGENTS.md says so, and a budget nobody enforces is a budget nobody keeps.
+export const SKILL_LINE_BUDGET = 150
+
+let problems = []
+let checked = []
+let rootDir = root
 
 function fail(file, message) {
-  problems.push({ file: relative(root, file), message })
+  problems.push({ file: relative(rootDir, file), message })
 }
 
 // ------------------------------------------------------------- discovery
@@ -98,7 +104,23 @@ function parseFrontmatter(text, file) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main()
 
 function main() {
-  const skillDirs = findSkills(join(root, 'skills'))
+  const { problems, checked } = validate(root)
+  if (problems.length) {
+    console.error(`\n✗ ${problems.length} problem${problems.length > 1 ? 's' : ''}\n`)
+    for (const p of problems) console.error(`  ${p.file}\n    ${p.message}`)
+    console.error('')
+    process.exit(1)
+  }
+  if (!quiet) console.log(`✓ ${checked.length} skill(s) valid: ${checked.join(', ')}`)
+}
+
+// Validates the repo at `dir` and returns what it found, so the rules can be
+// exercised against a fixture tree instead of only against this repo.
+export function validate(dir = root) {
+  rootDir = dir
+  problems = []
+  checked = []
+  const skillDirs = findSkills(join(rootDir, 'skills'))
 
   if (!skillDirs.length) problems.push({ file: 'skills/', message: 'No SKILL.md found anywhere.' })
 
@@ -110,6 +132,13 @@ function main() {
     const { fields, body } = parsed
     const dirName = basename(dir)
     checked.push(dirName)
+
+    const lineCount = text.replace(/\n$/, '').split('\n').length
+    if (lineCount > SKILL_LINE_BUDGET)
+      fail(
+        file,
+        `is ${lineCount} lines — ${lineCount - SKILL_LINE_BUDGET} past the ${SKILL_LINE_BUDGET}-line budget. SKILL.md is a router; move the excess into references/ and link it.`,
+      )
 
     if (!fields.name) fail(file, 'Frontmatter is missing "name".')
     else if (fields.name !== dirName)
@@ -199,9 +228,9 @@ ${src.replace(/^export\s+const\s+meta\s*=/m, 'const meta =')}
 
   // --------------------------------------------------- plugin manifest sync
 
-  const pluginPath = join(root, '.claude-plugin', 'plugin.json')
+  const pluginPath = join(rootDir, '.claude-plugin', 'plugin.json')
+  let plugin = null
   if (existsSync(pluginPath)) {
-    let plugin = null
     try {
       plugin = JSON.parse(readFileSync(pluginPath, 'utf8'))
     } catch (err) {
@@ -209,7 +238,7 @@ ${src.replace(/^export\s+const\s+meta\s*=/m, 'const meta =')}
     }
     if (plugin) {
       const declared = new Set((plugin.skills || []).map((p) => p.replace(/^\.\//, '')))
-      const actual = new Set(skillDirs.map((d) => relative(root, d)))
+      const actual = new Set(skillDirs.map((d) => relative(rootDir, d)))
       for (const d of declared)
         if (!actual.has(d)) fail(pluginPath, `declares "${d}", which is not a skill directory.`)
       for (const d of actual)
@@ -217,7 +246,7 @@ ${src.replace(/^export\s+const\s+meta\s*=/m, 'const meta =')}
     }
   }
 
-  const marketplacePath = join(root, '.claude-plugin', 'marketplace.json')
+  const marketplacePath = join(rootDir, '.claude-plugin', 'marketplace.json')
   if (existsSync(marketplacePath)) {
     let marketplace = null
     try {
@@ -228,26 +257,60 @@ ${src.replace(/^export\s+const\s+meta\s*=/m, 'const meta =')}
     // The plugin's name is the namespace its skills are invoked under
     // (`<plugin>:<skill>`). A marketplace advertising a different name installs
     // nothing, and the failure surfaces only when a user tries it.
-    if (marketplace && existsSync(pluginPath)) {
-      const pluginName = JSON.parse(readFileSync(pluginPath, 'utf8')).name
+    if (marketplace && plugin) {
       const advertised = (marketplace.plugins || []).map((p) => p.name)
-      if (!advertised.includes(pluginName)) {
+      if (!advertised.includes(plugin.name)) {
         fail(
           marketplacePath,
-          `advertises ${JSON.stringify(advertised)} but plugin.json is named "${pluginName}".`,
+          `advertises ${JSON.stringify(advertised)} but plugin.json is named "${plugin.name}".`,
         )
       }
     }
   }
 
-  // ---------------------------------------------------------------- output
+  // ------------------------------------------------------------------ hooks
 
-  if (problems.length) {
-    console.error(`\n✗ ${problems.length} problem${problems.length > 1 ? 's' : ''}\n`)
-    for (const p of problems) console.error(`  ${p.file}\n    ${p.message}`)
-    console.error('')
-    process.exit(1)
+  // A hook the host cannot start is a hook that silently never fires — and a
+  // SessionStart hook that never fires is a plugin that never becomes
+  // automatic. Every command a hooks.json names must resolve, and must parse.
+  const hooksDir = join(rootDir, 'hooks')
+  const hooksPath = join(hooksDir, 'hooks.json')
+  if (existsSync(hooksPath)) {
+    let hooks = null
+    try {
+      hooks = JSON.parse(readFileSync(hooksPath, 'utf8'))
+    } catch (err) {
+      fail(hooksPath, `is not valid JSON: ${err.message}`)
+    }
+    if (hooks && hooks.hooks && typeof hooks.hooks === 'object') {
+      for (const [event, matchers] of Object.entries(hooks.hooks)) {
+        if (!Array.isArray(matchers)) {
+          fail(hooksPath, `"${event}" must be an array of matcher groups.`)
+          continue
+        }
+        for (const group of matchers) {
+          for (const hook of group.hooks || []) {
+            if (hook.type !== 'command' || typeof hook.command !== 'string') continue
+            for (const m of hook.command.matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"'\s]+)/g)) {
+              if (!existsSync(join(rootDir, m[1])))
+                fail(hooksPath, `"${event}" runs ${m[1]}, which does not exist.`)
+            }
+          }
+        }
+      }
+    } else if (hooks) fail(hooksPath, 'must carry a top-level "hooks" object.')
+  }
+  if (existsSync(hooksDir)) {
+    for (const entry of readdirSync(hooksDir)) {
+      if (!entry.endsWith('.mjs')) continue
+      const script = join(hooksDir, entry)
+      try {
+        execFileSync(process.execPath, ['--check', script], { stdio: 'pipe' })
+      } catch (err) {
+        fail(script, `does not parse: ${String(err.stderr || err).split('\n')[1] || err.message}`)
+      }
+    }
   }
 
-  if (!quiet) console.log(`✓ ${checked.length} skill(s) valid: ${checked.join(', ')}`)
+  return { problems, checked }
 }

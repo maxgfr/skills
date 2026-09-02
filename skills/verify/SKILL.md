@@ -114,29 +114,12 @@ is nothing for a planner to aim.
 
 ## Output contract
 
-Into the conversation, and nothing more than this:
-
-```
-VERDICT: FAIL — 2 blocking, 3 major, 4 minor   (7 candidates refuted)   tier: normal
-
-EVIDENCE
-  typecheck  pnpm run typecheck   exit 2   src/api/user.ts(41,7): Type 'string | undefined' is not assignable
-  test       pnpm run test        exit 1   14 passed, 1 failed — "rejects an expired token"
-  build      not run              —        blocked by typecheck
-
-BLOCKING
-  1. src/api/user.ts:41 — `email` is optional upstream but consumed as required.
-     Fails when: a user signs up via OAuth without an email → 500 on first request.
-     Fix: narrow at the boundary in `parseProfile`, or make the field required in the schema.
-
-REQUIREMENTS  4 implemented · 1 partial · 1 missing · 1 out of scope
-  missing — "rate-limit the endpoint" (plan §3) — no limiter anywhere in the diff
-
-RESIDUAL RISK
-  No e2e suite in this repo; the OAuth path was proven by running it, the SAML path was not.
-
-Full report: .agents/verify/20260815-142233/REPORT.md
-```
+Into the conversation, and nothing more than this: a verdict line, an EVIDENCE
+table (one row per gate — command, exit code, first failing line), the
+surviving findings ranked by severity with a concrete failure scenario each, a
+REQUIREMENTS count line, RESIDUAL RISK, and the report path. A complete
+example, with the second line the cheap tiers add, is in
+`references/report.md`.
 
 Three verdicts, not two:
 
@@ -149,29 +132,16 @@ Three verdicts, not two:
 Rules for this block: no adjectives, no "Great!", no summary of what the code does. Findings the skeptics killed are a count, not a list. Anything unverified is named in RESIDUAL RISK — silence there is a lie. **A lane that errored is named there too**: a lane that died found nothing because it never ran, which is not the same as a clean result.
 
 **The verdict line states the tier, and below `deep` a second line states what
-that tier did not do** — the only thing between a gates-only PASS and a reader
-who takes it for a full verification. Word it from `residual_risk` in the return
-value:
-
-```
-VERDICT: PASS — 0 blocking   (3 candidates refuted)   tier: light
-  light: no behaviour proof — nothing was run to prove it works — and one
-  skeptic per claim rather than a panel.
-```
+that tier did not do**, worded from `residual_risk` in the return value — the
+only thing between a gates-only PASS and a reader who takes it for a full
+verification.
 
 **When `report_path` comes back `null`**, nothing survived and no lane died, so
 no agent was spent transcribing an empty run. Write the short version yourself in
 the run directory — verdict, tier, gate table, `residual_risk`. Never print a
 path to a file nobody wrote.
 
-## Red flags
-
-| Thought | Reality |
-|---|---|
-| "Tests passed last run, so they pass" | Run them now. Stale evidence is not evidence. |
-| "The diff looks right" | Reading is not proving. Lane A or it did not happen. |
-| "This is probably a bug" | Send it to a skeptic. Probably means unverified. |
-| "One `@ts-ignore` and the gate is green" | That is the repair the loop exists to refuse. |
-| "The plan was wrong, I'll update it" | Escalate. Rewriting the promise is not verification. |
-| "Nothing to report, everything passed" | Then name what you could not verify. There is always something. |
-| "The peer was down, but I reviewed it myself" | Then it was not crosschecked. Say that word only when it happened. |
+The red-flags table — the thoughts that turn a verification into a reassurance —
+is at the end of `references/report.md`. "Tests passed last run", "the diff
+looks right", "the peer was down but I reviewed it myself": each has a one-line
+answer there, and each is a reason to stop and run the command instead.
