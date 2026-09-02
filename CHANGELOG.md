@@ -1,3 +1,22 @@
+# [1.3.0](https://github.com/maxgfr/skills/compare/v1.2.0...v1.3.0) (2026-09-02)
+
+
+### Bug Fixes
+
+* bound the peer auth check by the run budget and minify the schema argument ([30aae79](https://github.com/maxgfr/skills/commit/30aae7916c3c7ce14129a89f5eff60a13a018f84))
+* **verify:** build the untracked patch in-process, blank each line once ([8606f73](https://github.com/maxgfr/skills/commit/8606f73777cd23178577ddf7300842995fd40560))
+* **verify:** cap what the report agent is handed ([77e44dd](https://github.com/maxgfr/skills/commit/77e44dddc3ae3af9fa33866f50273d961e22bb9a))
+* **verify:** read each manifest once in detect-gates, and stop denying concurrently ([3053e83](https://github.com/maxgfr/skills/commit/3053e838a3f8a285dc5e37dc977660fc54f65817))
+* **verify:** scope the package.json gate rule to scripts, catch renamed CI files, resolve the plan path ([8d7f1bd](https://github.com/maxgfr/skills/commit/8d7f1bd4ed26051e14e7f849d7fe1c7938acb7e6))
+
+
+### Features
+
+* add build — execute an approved plan step by step, guarded, then hand off to verify ([dcfef56](https://github.com/maxgfr/skills/commit/dcfef5649f1580b43d1ec36df053fae4062deb19))
+* add using-maxgfr and the session-start and stop hooks ([4edf0cf](https://github.com/maxgfr/skills/commit/4edf0cf4c76e466245c007bb20d8af83c4845017))
+* **blueprint:** auto mode chains build and verify after approval ([3ae97af](https://github.com/maxgfr/skills/commit/3ae97afe8fe462b0d5bb265b25a790a830bf113c))
+* enforce the SKILL.md line budget, validate hooks, trim verify's router ([3951423](https://github.com/maxgfr/skills/commit/39514236469eb1bce69e77c64a7e86037ac77e3d))
+
 # [1.2.0](https://github.com/maxgfr/skills/compare/v1.1.2...v1.2.0) (2026-09-01)
 
 
