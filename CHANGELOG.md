@@ -1,3 +1,11 @@
+## [1.3.1](https://github.com/maxgfr/skills/compare/v1.3.0...v1.3.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **build:** tell an agent that never ran from a step that failed review ([1e78203](https://github.com/maxgfr/skills/commit/1e78203a75fb951aa759bc1bbe7887bcd1af39e2))
+* **verify:** refuse a package.json whose scripts block was deleted wholesale ([0de7c1a](https://github.com/maxgfr/skills/commit/0de7c1adb507393e2b594accbc4757aa407bc0ab))
+
 # [1.3.0](https://github.com/maxgfr/skills/compare/v1.2.0...v1.3.0) (2026-09-02)
 
 
