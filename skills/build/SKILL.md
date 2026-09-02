@@ -86,9 +86,11 @@ for hosts that dispatch by hand:
   runs the other CLI in the worktree with a write sandbox and nothing more —
   no approval bypass, no full access. It never runs the Verify command and never
   runs the guard: the reviewer and the guard do, exactly as for a host
-  implementer. Flags and refusals: `references/peer.md`. An unavailable peer
-  stops the build as `peer_unavailable`; the host does not quietly take over
-  the work it was asked to delegate.
+  implementer. Flags and refusals: `references/peer.md`. A rejected peer step is
+  `blocked` with no retry — its prompt comes from the plan step alone, so the
+  reviewer's issues have no way to reach it. An unavailable peer stops the build
+  as `peer_unavailable`; the host does not quietly take over the work it was
+  asked to delegate.
 - **Record.** `<runDir>/BUILD.md` — the step table, what was skipped and why,
   what stopped the build.
 

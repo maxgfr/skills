@@ -124,7 +124,8 @@ Anything else, in order:
 
 | What happened | Status | Retry? |
 |---|---|---|
-| The reviewer rejected it, or a Verify command exited non-zero | `blocked` after one retry with the reviewer's issues | yes, once |
+| The reviewer rejected it, or a Verify command exited non-zero | `blocked` after one retry with the reviewer's issues | yes, once — **host mode only** |
+| The same, in `peer` mode | `blocked` at once, the issues kept in the record | no — `peer-build.mjs` builds the peer's prompt from the plan step alone, so a retry would re-send the identical prompt and buy the identical rejection, at the cost of a second full peer session |
 | The implementer returned `blocked_by` | `blocked` at once | no — it told you the plan is short, and a second attempt will not lengthen it |
 | The guard returned `FORBIDDEN` | `blocked`, revert the hunks, `stopped_by`, nothing further is implemented | no |
 | **An agent did not return at all** — it errored, timed out, or hit a quota | **`unproven`** | **no** |

@@ -248,8 +248,12 @@ async function runStep(id) {
         label: `peer:${id}`,
         phase: 'Steps',
       })
-      if (!p || p.status !== 'ok') {
-        peerFailure = (p && p.reason) || 'the peer returned nothing'
+      // An agent that died is not a peer that refused. One says nothing about
+      // the other CLI at all — it may never have been started.
+      if (!p)
+        return unproven(rec, 'the agent running the peer never returned, so nothing is known about this step — the peer itself may never have been started.')
+      if (p.status !== 'ok') {
+        peerFailure = p.reason || `the peer returned ${p.status}`
         rec.status = 'peer_unavailable'
         rec.notes = peerFailure
         stoppedBy = `peer-unavailable: ${peerFailure}`
@@ -328,6 +332,18 @@ async function runStep(id) {
     if (reviewExit !== 0) issues.unshift(`- the Verify command exited ${reviewExit === null ? 'without a result' : reviewExit} for the reviewer`)
     feedback = issues.join('\n') || '- the reviewer did not accept the step and gave no detail'
     rec.notes = feedback
+
+    // Peer mode has no channel back to the peer: peer-build.mjs builds its
+    // prompt from the plan step alone, so the reviewer's issues cannot reach
+    // it. A second run would be the same prompt, the same output and the same
+    // rejection, at the cost of another full peer session — so a rejected peer
+    // step is blocked at once, with the issues in the record for whoever picks
+    // it up.
+    if (mode === 'peer') {
+      rec.status = 'blocked'
+      return
+    }
+
     log(`${id} attempt ${rec.attempts}/${maxAttempts} not accepted: ${issues.length} issue(s)`)
   }
 

@@ -271,20 +271,41 @@ test('peer mode: the reviewer and the guard still run on every step, and steps g
   assert.ok(result.residual_risk.some((r) => /peer's own reports were not used/.test(r)))
 })
 
-test('peer mode: a peer that wrote code but whose step fails review is retried through the peer, not the host', async () => {
-  let reviews = 0
+test('peer mode: a rejected step is blocked at once, because the issues cannot reach the peer', async () => {
+  // peer-build.mjs builds the peer's prompt from the plan step alone, so a
+  // retry would re-send the identical prompt and buy the identical rejection
+  // at the cost of a second full peer session. The earlier version retried
+  // anyway, and the test passed only because the stubbed reviewer changed its
+  // mind on the second call regardless of what the peer was told.
   const { result, calls } = await run(
     { mode: 'peer', host: 'claude', steps: [CHAIN[0]], waves: [['S-001']] },
     {
       'peer:': { status: 'ok', files_touched: ['src/a.ts'] },
-      'review:': () => (++reviews === 1 ? { ...REVIEW_OK, quality_ok: false, issues: [{ file: 'src/a.ts', line: 9, issue: 'debug output left', kind: 'quality' }] } : REVIEW_OK),
+      'review:': { ...REVIEW_OK, quality_ok: false, issues: [{ file: 'src/a.ts', line: 9, issue: 'debug output left', kind: 'quality' }] },
       'guard:': GUARD_CLEAN,
       summary: 'written',
     },
   )
-  assert.equal(result.status, 'built')
-  assert.equal(calls.filter((c) => c === 'peer:S-001').length, 2)
-  assert.equal(calls.filter((c) => c.startsWith('impl:')).length, 0)
+  assert.equal(result.status, 'blocked')
+  assert.equal(result.steps[0].status, 'blocked')
+  assert.equal(result.steps[0].attempts, 1, 'a peer step must not be run twice with the same prompt')
+  assert.equal(calls.filter((c) => c === 'peer:S-001').length, 1)
+  assert.equal(calls.filter((c) => c.startsWith('impl:')).length, 0, 'the host took over work the peer was asked to do')
+  assert.match(result.steps[0].notes, /debug output left/, 'the issues must survive for whoever picks the step up')
+})
+
+test('peer mode: an agent that never returned is unproven, not a peer refusal', async () => {
+  // A dead agent says nothing about the other CLI — it may never have started
+  // it. Reporting that as peer_unavailable sends the user to check an
+  // installation that was never the problem.
+  const { result } = await run(
+    { mode: 'peer', host: 'claude', steps: [CHAIN[0]], waves: [['S-001']] },
+    { 'peer:': null, 'review:': REVIEW_OK, 'guard:': GUARD_CLEAN, summary: 'written' },
+  )
+  assert.equal(result.steps[0].status, 'unproven')
+  assert.equal(result.status, 'unproven')
+  assert.match(result.steps[0].notes, /never returned/)
+  assert.notEqual(result.status, 'peer_unavailable')
 })
 
 test('the guard is invoked as a transcription of the script, on the baseline and the plan', async () => {

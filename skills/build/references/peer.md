@@ -47,6 +47,16 @@ scans the diff for forbidden repairs. A step is `done` on the reviewer's exit
 code, never on the peer's report. A peer that ends its message with `BLOCKED
 BY` is surfaced as `blocked_claimed`, and the reviewer's run decides.
 
+## One shot per step
+
+A rejected peer step is `blocked` immediately — no retry. The host implementer
+gets a second attempt because the reviewer's issues can be written into its
+brief; the peer's prompt is built by `peer-build.mjs` from the plan step alone,
+so there is no channel to tell it what was wrong. Re-running would re-send the
+identical prompt for the identical rejection, and pay for a second full peer
+session to get it. The issues stay in the record; `/build` again once the plan
+or the code is fixed.
+
 ## When the peer is not there
 
 Not installed, not authenticated, timed out, crashed, or the host could not
