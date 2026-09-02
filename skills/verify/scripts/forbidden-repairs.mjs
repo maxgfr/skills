@@ -67,15 +67,37 @@ function untrackedPaths() {
 // A fix round that creates a NEW file — a fresh test full of it.skip(), a module
 // carrying an @ts-ignore — produces nothing in `git diff`. Scanning only tracked
 // changes would let exactly the cheat this guard exists for walk straight past.
-function untrackedPatch(paths) {
+//
+// The patch is synthesised here rather than asked of `git diff --no-index`: that
+// is one process per file, and a fix round that scaffolds a package spawns git
+// two hundred times to learn what `readFileSync` already knows.
+const MAX_UNTRACKED_BYTES = 2 * 1024 * 1024
+
+function syntheticPatch(paths) {
   let out = ''
   for (const path of paths) {
+    let buf
     try {
-      out += git(['diff', '--no-index', '--', '/dev/null', path], { stdio: 'pipe' })
-    } catch (err) {
-      // --no-index exits 1 whenever the files differ, which is always here.
-      if (err.stdout) out += err.stdout
+      buf = readFileSync(path)
+    } catch {
+      continue // listed a moment ago, gone now — a temp file the round cleaned up
     }
+    if (buf.length > MAX_UNTRACKED_BYTES) {
+      notes.push(`${path} was NOT scanned — untracked and larger than ${MAX_UNTRACKED_BYTES} bytes.`)
+      continue
+    }
+    if (buf.includes(0)) {
+      notes.push(`${path} was NOT scanned — untracked and binary.`)
+      continue
+    }
+    const text = buf.toString('utf8')
+    const body = text.endsWith('\n') ? text.slice(0, -1) : text
+    const lines = body === '' ? [] : body.split('\n')
+    out +=
+      `diff --git a/${path} b/${path}\n--- /dev/null\n+++ b/${path}\n` +
+      `@@ -0,0 +1,${lines.length} @@\n` +
+      lines.map((l) => `+${l}`).join('\n') +
+      '\n'
   }
   return out
 }
@@ -108,7 +130,7 @@ function readPatch() {
       notes.push('Untracked files could not be listed — not a git repository.')
       return { patch: base, untrackedScanned: false }
     }
-    return { patch: base + untrackedPatch(paths), untrackedScanned: true }
+    return { patch: base + syntheticPatch(paths), untrackedScanned: true }
   }
 
   // A supplied patch is scanned exactly as given. Saying so beats letting a new
@@ -145,19 +167,22 @@ const BRACE_LANG =
 
 // Comments and string literals are blanked — length-preserving, so reported
 // line numbers stay true — before the rules that must not read prose.
+const LINE_COMMENT = /(^|[^:])\/\/[^\n]*/g
+const BLOCK_COMMENT = /\/\*[\s\S]*?\*\//g
+const HASH_COMMENT = /#[^\n]*/g
+const STRING_LITERAL = /(['"`])(?:\\.|(?!\1)[^\\\n])*\1/g
+const blankKeepingNewlines = (m) => m.replace(/[^\n]/g, ' ')
+
 function blankComments(text, file = '') {
   const out = text
-    .replace(/(^|[^:])\/\/[^\n]*/g, (m, p) => p + ' '.repeat(m.length - p.length))
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(LINE_COMMENT, (m, p) => p + ' '.repeat(m.length - p.length))
+    .replace(BLOCK_COMMENT, blankKeepingNewlines)
   if (BRACE_LANG.test(file)) return out
-  return out.replace(/#[^\n]*/g, (m) => ' '.repeat(m.length))
+  return out.replace(HASH_COMMENT, (m) => ' '.repeat(m.length))
 }
 
 function blankStrings(text) {
-  return text.replace(
-    /(['"`])(?:\\.|(?!\1)[^\\\n])*\1/g,
-    (m) => m[0] + ' '.repeat(m.length - 2) + m[0],
-  )
+  return text.replace(STRING_LITERAL, (m) => m[0] + ' '.repeat(m.length - 2) + m[0])
 }
 
 // Strings first: a `/*` inside `glob('src/*.ts')` is not a comment, and letting
@@ -345,14 +370,20 @@ for (const change of changes) {
   const prose = NON_CODE.test(change.file)
 
   if (change.kind === 'add' && !prose) {
+    // Blanked once per line, not once per rule: four rules read the same line,
+    // and the blanking is the expensive part of the scan.
+    let stringsBlanked = null
+    let allBlanked = null
     for (const r of ADDED_RULES) {
       if (r.files && !matchesFile(r.files, change.file)) continue
-      const text =
-        r.strip === 'all'
-          ? blankNonCode(change.text, change.file)
-          : r.strip === 'strings'
-            ? blankStrings(change.text)
-            : change.text
+      let text = change.text
+      if (r.strip === 'all') {
+        allBlanked ??= blankNonCode(change.text, change.file)
+        text = allBlanked
+      } else if (r.strip === 'strings') {
+        stringsBlanked ??= blankStrings(change.text)
+        text = stringsBlanked
+      }
       if (r.re.test(text)) flag(r.rule, r.why, change)
     }
   }

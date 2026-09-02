@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -118,6 +118,41 @@ test('an unresolvable ref fails loudly instead of reporting CLEAN', () => {
     })()
     assert.notEqual(r.exitCode, 0, 'a broken baseline must never look like a clean round')
     assert.ok(!/"verdict":"CLEAN"/.test(r.stdout))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('an untracked binary file is noted, not scanned', () => {
+  const dir = repo()
+  try {
+    writeFileSync(join(dir, 'src', 'logo.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0x0d]))
+    const r = guard(dir)
+    assert.equal(r.verdict, 'CLEAN')
+    assert.ok(!r.files_changed.includes('src/logo.png'), 'a binary must not be reported as scanned')
+    assert.ok(r.notes.some((n) => /logo\.png/.test(n) && /binary/.test(n)), JSON.stringify(r.notes))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a large untracked file is scanned in-process, without one git spawn per file', () => {
+  // `git diff --no-index` costs a process per untracked path. A round that
+  // scaffolds a package would spawn git hundreds of times to read what
+  // readFileSync already knows. The patch is synthesised instead.
+  const dir = repo()
+  try {
+    const lines = Array.from({ length: 3000 }, (_, i) => `export const v${i} = ${i}`)
+    lines[2500] = 'const x = y as any'
+    writeFileSync(join(dir, 'src', 'big.ts'), lines.join('\n') + '\n')
+    const r = guard(dir)
+    assert.equal(r.verdict, 'FORBIDDEN')
+    assert.equal(r.violations[0].file, 'src/big.ts')
+    assert.equal(r.violations[0].line, 2501, 'line numbers must be true in a synthesised patch')
+    assert.ok(
+      !readFileSync(SCRIPT, 'utf8').includes("'--no-index'"),
+      'the guard must not spawn git per untracked file',
+    )
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
