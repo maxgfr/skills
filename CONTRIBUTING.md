@@ -29,24 +29,40 @@ Then add `"./skills/<name>"` to `.claude-plugin/plugin.json`, add a row to the R
 
 Read [AGENTS.md](./AGENTS.md) before writing the body — it covers what belongs in `SKILL.md` versus `references/`, and why anything with a right answer belongs in a script rather than a prompt.
 
-## Changing the crosscheck
+## Shared copies
 
-Four files ship twice, byte-identical in `blueprint` and `verify`:
+Some files ship in more than one skill, byte-identical:
 
-```
-references/crosscheck.md   scripts/peer-run.mjs
-scripts/schema-plan.json   scripts/schema-diff.json
-```
+| File | Ships in |
+|---|---|
+| `references/crosscheck.md`, `scripts/schema-plan.json`, `scripts/schema-diff.json` | `blueprint`, `verify` |
+| `scripts/peer-run.mjs` | `blueprint`, `verify`, `build` |
+| `scripts/forbidden-repairs.mjs` | `verify`, `build` |
 
-That is deliberate. A skill installed on its own with `--skill blueprint` has to
-be complete, and a relative link into a sibling directory would install as a
+That is deliberate. A skill installed on its own with `--skill build` has to be
+complete, and a relative link into a sibling directory would install as a
 dangling reference — the exact failure `npm run validate` exists to catch.
 
-So edit one copy and `cp` it to the other. `tests/crosscheck-sync.test.mjs`
+So edit one copy and `cp` it to the others. `tests/crosscheck-sync.test.mjs`
 fails if you forget. Do not solve this by moving the files to a shared directory
 and pointing `../` at them: it passes validation today only because the
 reference resolver does not implement the containment check its own comment
 describes.
+
+## Changing the hooks
+
+`hooks/hooks.json` is what makes the skills automatic under the plugin. Both
+scripts it names are dependency-free Node, always exit 0, and are tested as
+processes in `tests/hooks.test.mjs` — run them by hand with the JSON a host
+would send:
+
+```bash
+node hooks/session-start.mjs --plain        # what gets injected
+printf '{"session_id":"x","cwd":"%s","stop_hook_active":false}' "$PWD" | node hooks/stop-guard.mjs
+```
+
+A Stop hook that blocks when it should not is worse than one that never fires:
+every new path the guard treats as source needs a test in both directions.
 
 ## Changing behaviour
 

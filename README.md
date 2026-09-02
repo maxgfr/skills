@@ -4,7 +4,7 @@ My agent skills. One install, one place to keep them.
 
 They are process skills: they change how an agent works rather than what it knows. Small, composable, and meant to be hacked on — install them, read them, make them yours.
 
-The set grows. Today it is the two ends of one loop: an agent tells you it is done, is wrong often enough that you check anyway — and is wrong at least as often *before* that, having planned against a repo it half-remembered and a decision you never made.
+The set grows. Today it is one loop, closed: an agent plans against a repo it half-remembered and a decision you never made, builds something else, and tells you it is done. `blueprint` asks until the decision is yours and grounds the plan in the repo. `build` executes that plan, one proven step at a time, in a worktree, without asking again. `verify` refuses to call it done until the evidence says so. A session-start hook puts the three in front of the model before its first message; a stop hook refuses to end a turn that changed source and never verified it.
 
 ## Install
 
@@ -25,6 +25,8 @@ Pick one. Installing both leaves you with every skill twice.
 
 The two paths name the skills differently, and that is the plugin's doing rather than a setting: a plugin namespaces what it ships, so `verify` is invoked as **`/maxgfr:verify`**. The `npx` path copies the files into `.claude/skills/`, where the same skill is plain **`/verify`**. Both run the identical skill; only the name you type changes.
 
+They differ in one more way: **the plugin ships the hooks** that make the skills fire on their own (see [automatic](#automatic)). The `npx` path copies skills only. To get the same effect there, add the router to your instructions file — `node hooks/session-start.mjs --plain >> AGENTS.md` from a checkout — and, if you want the stop guard, wire `hooks/stop-guard.mjs` as a `Stop` hook in your settings.
+
 [skills.sh](https://skills.sh) builds its directory from recorded installs, so the listing for this repo appears on its own once there are some. Neither command depends on it — `npx skills add` reads the repository directly.
 
 Installing takes the whole set, or pick what you want:
@@ -38,19 +40,27 @@ npx skills add maxgfr/skills --skill verify  # take one — each is self-contain
 
 | Skill | What it does |
 |---|---|
-| [`blueprint`](./skills/blueprint) | Interrogates you, grounds the design in the repo, and writes the plan `verify` will hold the work to. |
+| [`blueprint`](./skills/blueprint) | Interrogates you, grounds the design in the repo, and writes the plan the other two hold the work to. |
+| [`build`](./skills/build) | Executes an approved plan step by step in a worktree — one implementer per step, a reviewer and a cheat guard on each — and hands off to `verify`. Can delegate the coding to the other CLI agent. |
 | [`verify`](./skills/verify) | Proves that work just produced actually works, then fixes the blockers. |
+| [`using-maxgfr`](./skills/using-maxgfr) | The router the session-start hook injects: when each of the three fires, and what it yields to other skills. |
 
-They are two ends of one loop. `blueprint` writes the promise to
-`docs/plans/<date>-<slug>.md`; `verify` reads that same file as the promise it
-checks the diff against — a path it already searched before this skill existed,
-so nothing has to be configured.
+One loop. `blueprint` writes the promise to `docs/plans/<date>-<slug>.md`;
+`build` reads that file as its schedule; `verify` reads it as the promise it
+checks the diff against. Three skills, one file, nothing to configure.
 
 ```
-/blueprint            # grill → ground → write the plan → approve
-                      # then /clear, and implement from the file
-/verify docs/plans/…  # gates, conformance, defect hunt → fix the blockers
+/blueprint                 # grill → ground → write the plan → approve
+/build docs/plans/…        # worktree → one agent per step → review → guard → step table
+/verify docs/plans/…       # gates, conformance, defect hunt → fix the blockers
+
+/blueprint auto            # all three from one call: approve, then build, then verify
 ```
+
+`build` and `verify` are **fire-and-forget**: one invocation, a deterministic
+Phase 0, and the Workflow launches in the same turn. No clarifying question, no
+summary, no "shall I proceed" — the approval was the plan file. The only refusal
+is a missing or unapproved plan, in one line.
 
 **Name the plan on the `verify` call.** It ranks your host's own plan-mode
 artifact above `docs/plans/`, so a bare `/verify` can pick up a scratch file
@@ -59,7 +69,8 @@ from the same session — newer, and not what `blueprint` wrote.
 Both ends can be **crosschecked**: one read-only consultation of the *other* CLI
 agent — Codex when you are in Claude Code, Claude when you are in Codex. It is
 the one thing a bigger budget on your own model cannot buy, and the only part of
-this repo that depends on something other than Node.
+this repo that depends on something other than Node. `build peer` goes one step
+further and lets that other agent write the code.
 
 ---
 
@@ -92,6 +103,59 @@ and the skill checks that it really is self-contained before suggesting it.
 
 The interview owes its shape to [Matt Pocock's `grilling`](https://github.com/mattpocock/skills);
 the artifact owes its task blocks to superpowers' `writing-plans`.
+
+---
+
+### build
+
+```
+/build                  # the newest approved plan under docs/plans/
+/build <path>           # that plan
+/build peer             # the other CLI agent writes the code, one step at a time
+/build then verify      # after `built`, run verify on the same plan, same turn
+```
+
+A plan is a promise; a build is the promise kept one step at a time, with the
+proof for each step run before the next starts. `build` exists so the model
+that planned the change *manages* the work instead of doing it in its own
+context — and so "I implemented the plan" becomes a table of exit codes.
+
+Phase 0 is a script. [`plan-steps.mjs`](./skills/build/scripts/plan-steps.mjs)
+finds the plan, refuses in one line if it is not `status: approved`, and turns
+its `S-xxx` steps into **dependency waves**: steps run in order, and steps in
+the same wave run in parallel — unless two of them name the same file, or one
+names none, in which case they are serialised, because implementers share one
+worktree and "they probably won't collide" is not a schedule. Then a worktree is
+made, a baseline is taken, and the Workflow is called. Nothing is asked.
+
+Per step, three agents:
+
+- an **implementer** gets the step verbatim, touches only its `Files:`, runs
+  its `Verify:` command and reports the exit code;
+- a **reviewer** reads the diff against the step's Change and Preserve, judges
+  quality, and **runs the Verify command again** — the implementer's report is
+  a claim, the reviewer's run is the evidence;
+- the **guard** — the same
+  [`forbidden-repairs.mjs`](./skills/verify/scripts/forbidden-repairs.mjs)
+  `verify` uses — scans the whole diff. One forbidden hunk is reverted and the
+  build stops; nothing after it runs.
+
+A step is `done` only when all three agree. Otherwise one retry with the
+reviewer's issues, then `blocked`, and its dependents are `skipped` by name,
+never attempted. What comes back is the step table, the worktree, a record in
+`.agents/build/<timestamp>/BUILD.md`, and the `/verify <plan>` call that proves
+the whole.
+
+**`peer` mode** replaces the implementer with the other CLI agent, running in
+the worktree with a write sandbox and nothing more: `--sandbox workspace-write`
+for Codex, `acceptEdits` for Claude, no bypass flag on either, and the flags are
+pinned by tests. The peer writes; it does not get to say whether it succeeded —
+the reviewer and the guard run exactly as before, and its own report is used by
+nobody. An unavailable peer stops the build as `peer_unavailable`; the host does
+not quietly take over the work it was asked to delegate.
+
+What it will not do: plan, verify the whole, renumber a step, build on your
+branch, commit, or ask. Full documentation: [`skills/build/`](./skills/build).
 
 ---
 
@@ -209,6 +273,34 @@ concurrency, or a repo you do not know well.
 
 ---
 
+### automatic
+
+A skill the model never thinks to look up is a skill that never fires. The
+plugin ships two hooks, in [`hooks/hooks.json`](./hooks/hooks.json), so that it
+does not have to think of it:
+
+**Session start** (`startup`, `/clear`, and after a compaction) injects
+[`using-maxgfr`](./skills/using-maxgfr/SKILL.md) — a sixty-line router that
+says when each of the three skills fires, in the words you would type (English
+and French), that `build` and `verify` are launched rather than discussed, and
+that TDD, debugging, review and brainstorming belong to whichever *other* skill
+you have installed for them. It names only these three, so it sits beside
+superpowers or Matt Pocock's set without arguing with either.
+
+**Stop** runs [`stop-guard.mjs`](./hooks/stop-guard.mjs): two git commands, a
+few stats, no model. If a source file was modified or added and no verify
+report is newer than it, the turn is blocked — **once per session** — with the
+reason. Plans, reports, notes and prose never trigger it; a run of `verify`
+clears it. Switch it off with `MAXGFR_NO_STOP_GUARD=1`, or `"stop_guard":
+false` in `~/.claude/verify.json` or the repo's `.agents/verify.json`.
+
+Both scripts are dependency-free, always exit 0, finish well inside the hook
+budget, and are tested as processes against throwaway repositories. The
+validator checks that every command `hooks.json` names actually exists — a
+hook the host cannot start is a plugin that silently never became automatic.
+
+---
+
 ## House style
 
 What every skill here follows, and what a new one has to earn:
@@ -223,18 +315,21 @@ The engines ship with the skills and run on their own:
 ```bash
 node skills/verify/scripts/detect-gates.mjs --cwd . --pretty   # what "green" means here
 git diff | node skills/verify/scripts/forbidden-repairs.mjs    # did that fix cheat?
+node skills/build/scripts/plan-steps.mjs --cwd . --pretty      # which plan, which waves
 node skills/blueprint/scripts/peer-run.mjs --host claude …     # ask the other agent
+node skills/build/scripts/peer-build.mjs --host claude …       # let it write one step
 ```
 
-All three are deterministic, dependency-free, and covered by tests. They work outside the skill too — `forbidden-repairs.mjs` on a PR diff is a reasonable CI step on its own.
+All of them are deterministic, dependency-free, and covered by tests. They work outside the skill too — `forbidden-repairs.mjs` on a PR diff is a reasonable CI step on its own.
 
-`peer-run.mjs` ships **twice**, byte-identical in both skills, so that
-`--skill blueprint` and `--skill verify` each install something complete. A test
-fails if the copies drift. What it owns is everything with a right answer: which
-binary, which read-only flags, how long to wait — and whether the `path:line` the
-peer cited actually contains the text it quoted. A citation that does not resolve
-drops its objection before anyone argues about it, because a fabricated line does
-not get better by being mentioned with a caveat.
+Some ship in more than one skill, byte-identical — `peer-run.mjs` in three,
+`forbidden-repairs.mjs` in two — so that `--skill build` installs something
+complete. A test fails if the copies drift. What `peer-run.mjs` owns is
+everything with a right answer: which binary, which read-only flags, how long to
+wait — and whether the `path:line` the peer cited actually contains the text it
+quoted. A citation that does not resolve drops its objection before anyone
+argues about it, because a fabricated line does not get better by being
+mentioned with a caveat.
 
 ## My other skills
 
@@ -256,10 +351,13 @@ Not everything belongs here. A skill built around a substantial engine — a tai
 
 ```bash
 npm ci
-npm run validate   # frontmatter, naming, dead references, plugin manifest, script syntax
-npm test           # the engines and the workflow, against fixtures
+npm run validate   # frontmatter, naming, line budget, dead references, manifests, hooks, script syntax
+npm test           # the engines, both workflows and both hooks, against fixtures
 npm run check      # everything, as CI runs it
 ```
+
+To see the hooks fire for real: `claude --plugin-dir .` from a checkout, and the
+router appears in the first message's context.
 
 The skills ship dependency-free; `npm ci` installs the release tooling only.
 Releases are cut by semantic-release from conventional commits on `main` — `fix:`

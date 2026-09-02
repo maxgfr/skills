@@ -4,6 +4,10 @@ Four independent ways of being wrong, checked four independent ways. They run in
 
 Each brief below is what the sub-agent receives. Give it the matrix entry it owns and the diff command; it fetches its own context from there.
 
+The briefs are the same text `workflows/verify.mjs` embeds. They are written out
+here for the hosts in `fallbacks.md` that dispatch by hand; on a Workflow host
+you never need to open this file. Edit both when you edit one.
+
 ---
 
 ## Lane A — Gates (evidence)

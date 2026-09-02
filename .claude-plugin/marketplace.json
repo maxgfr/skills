@@ -10,7 +10,7 @@
     {
       "name": "maxgfr",
       "source": "./",
-      "description": "My agent skills: blueprint plans a change before it is built, verify proves it works once it is. Either can be crosschecked against the other CLI agent. Skills land under the maxgfr: namespace.",
+      "description": "One loop, three skills: blueprint plans a change and gets it approved, build implements the approved plan step by step in a worktree, verify proves the result. A session-start hook makes them fire on their own; a stop guard refuses to call unverified work done. Either end can be crosschecked against the other CLI agent, and build can hand the coding to it. Skills land under the maxgfr: namespace.",
       "homepage": "https://github.com/maxgfr/skills",
       "license": "MIT",
       "category": "engineering",
@@ -20,6 +20,8 @@
         "code-review",
         "quality-gate",
         "planning",
+        "implementation",
+        "hooks",
         "engineering"
       ]
     }
