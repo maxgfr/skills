@@ -31,6 +31,7 @@ Violating the letter of a law is violating its spirit.
 | `/blueprint grill` | The interview only. Stops at the locked constraints; designs nothing. |
 | `/blueprint crosscheck` | + one read-only consultation of the other CLI agent before approval. |
 | `/blueprint <path>` | Harden an existing plan instead of writing a new one. |
+| `/blueprint auto` | After approval, run `build` then `verify` on the plan — same turn, no prompt between. |
 
 ## Phase 1 — Orient and classify
 
@@ -105,21 +106,20 @@ line is what the write is *for*: `docs/plans/<file>` and
 `.agents/crosscheck/…` are the deliverable, everything else is the work, and
 the work waits.
 
-Then offer the handoff, because the plan being self-contained is what makes this
-safe:
+Then, on the yes, set `status: approved` in the file and hand off. Under
+`auto`, invoke `build docs/plans/<file> then verify` **in the same turn** — no
+`/clear` offer, no prompt between the approval and the verdict; the gate was
+the approval. Otherwise offer it:
 
-> The plan is at `docs/plans/<file>`. It is written to be executed by an agent
-> that was not in this conversation — so the cheapest next move is `/clear`,
-> then implement from the file. Want me to do that, or continue here?
+> The plan is at `docs/plans/<file>`, written to be executed by an agent that
+> was not in this conversation. `/build docs/plans/<file>` implements it in a
+> worktree and hands off to `/verify docs/plans/<file>`. Now, or `/clear` first?
 
 Run the self-containment check in `references/artifact.md` **before** offering
 it. If a step still leans on something only this conversation knows, that is a
-gap in the plan, not a reason to keep the context.
-
-After implementation: `/verify docs/plans/<file>` reads that same file as the
-promise. **Name the path.** `verify` ranks the host's own plan artifact above
-`docs/plans/`, so a bare `/verify` can pick up a plan-mode scratch file from the
-same session — newer, and not what you wrote.
+gap in the plan, not a reason to keep the context. **Name the path** on both
+calls: `verify` ranks the host's own plan artifact above `docs/plans/`, so a
+bare `/verify` can pick up a plan-mode scratch file from the same session.
 
 ## What this does not do
 
