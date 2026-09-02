@@ -387,6 +387,42 @@ test('a peer that is not installed is unavailable, not a crash', async () => {
   }
 })
 
+test('an auth probe that hangs is bounded by the run budget, and the total stays inside it', async () => {
+  // checkAuth used a fixed 20 s that `--timeout-ms` knew nothing about, so a
+  // 5 s run could wait 25 s. The probe now gets a quarter of the budget, the
+  // run gets the rest, and the elapsed time is what the caller asked for.
+  const dir = repoWith('x\n')
+  const bin = join(dir, 'bin')
+  mkdirSync(bin)
+  fakeCli(bin, 'codex', `
+const a = process.argv.slice(2)
+if (a[0] === 'login') setTimeout(() => process.exit(0), 30000)
+`)
+  const started = Date.now()
+  const res = await withPath(bin, () => run(dir, ['--timeout-ms', '4000']))
+  const elapsed = Date.now() - started
+  assert.equal(res.status, 'peer_unavailable')
+  assert.match(res.reason, /did not answer within 1000ms/)
+  assert.ok(elapsed < 4500, `waited ${elapsed}ms on a 4000ms budget`)
+  assert.ok(res.duration_ms >= 900, 'duration_ms must include the probe')
+})
+
+test('the claude schema argument is minified, and an oversized schema is refused before the spawn', async () => {
+  const { argv } = buildInvocation({ peer: 'claude', cwd: '/repo', schemaPath: SCHEMA, lastMessagePath: '/out/m.json' })
+  const schema = argv[argv.indexOf('--json-schema') + 1]
+  assert.ok(!schema.includes('\n'), 'the schema must be one line')
+  assert.deepEqual(JSON.parse(schema), JSON.parse(readFileSync(SCHEMA, 'utf8')))
+
+  const dir = repoWith('x\n')
+  const huge = join(dir, 'huge.json')
+  writeFileSync(huge, JSON.stringify({ type: 'object', description: 'x'.repeat(70 * 1024) }))
+  const prompt = join(dir, 'prompt.txt')
+  writeFileSync(prompt, 'the brief')
+  const res = await main(['--host', 'claude', '--mode', 'diff', '--cwd', dir, '--prompt', prompt, '--schema', huge, '--out', join(dir, 'out')])
+  assert.equal(res.status, 'peer_unavailable')
+  assert.match(res.reason, /one argument/)
+})
+
 test('a non-zero exit is unavailable and carries the stderr tail', async () => {
   const dir = repoWith('x\n')
   const bin = join(dir, 'bin')

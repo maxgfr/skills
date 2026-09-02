@@ -95,12 +95,14 @@ export function buildInvocation({ peer, cwd, schemaPath, lastMessagePath, model 
     argv.push('-') // the prompt arrives on stdin, never as an argument
     return { command: 'codex', argv }
   }
+  // `--json-schema` takes the schema inline, as one argv value. Minified, so a
+  // pretty-printed file does not spend the single-argument limit on indentation.
   const argv = [
     '-p',
     '--output-format',
     'json',
     '--json-schema',
-    readFileSync(schemaPath, 'utf8'),
+    JSON.stringify(JSON.parse(readFileSync(schemaPath, 'utf8'))),
     '--permission-mode',
     'plan',
     '--restricted',
@@ -119,17 +121,29 @@ function unavailable(reason, remedy) {
   return { status: 'peer_unavailable', reason, ...(remedy ? { remedy } : {}) }
 }
 
-export function checkAuth(peer, run = execFileSync) {
+// The auth probe is bounded by the run's own budget: a `--timeout-ms` is what
+// the caller is prepared to wait in total, and a probe that hangs for twenty
+// seconds before a five-second run is a run that lasted twenty-five.
+export const AUTH_TIMEOUT_MS = 20_000
+
+export function checkAuth(peer, run = execFileSync, timeoutMs = AUTH_TIMEOUT_MS) {
   const { argv, remedy } = AUTH[peer]
+  const timeout = Math.max(1000, Math.min(AUTH_TIMEOUT_MS, timeoutMs))
   try {
-    run(peer, argv, { stdio: 'pipe', timeout: 20_000 })
+    run(peer, argv, { stdio: 'pipe', timeout })
     return { ok: true }
   } catch (err) {
     if (err && err.code === 'ENOENT')
       return unavailable(`\`${peer}\` is not on PATH.`, `install ${peer}`)
+    if (err && (err.code === 'ETIMEDOUT' || err.signal))
+      return unavailable(`\`${peer} ${argv.join(' ')}\` did not answer within ${timeout}ms.`, remedy)
     return unavailable(`\`${peer}\` is not authenticated.`, remedy)
   }
 }
+
+// One argv value, and the kernel has a limit on those. Past it the peer never
+// starts, with an error that names neither the schema nor the limit.
+export const MAX_SCHEMA_BYTES = 64 * 1024
 
 // SIGTERM, a grace period, then the whole process group — a peer that spawned
 // its own children leaves them behind otherwise. `timeout` is not on a stock
@@ -339,9 +353,23 @@ export async function main(argv) {
 
   if (!existsSync(promptPath)) return { ...base, ...unavailable(`No prompt file at ${promptPath}.`) }
   if (!existsSync(schemaPath)) return { ...base, ...unavailable(`No schema file at ${schemaPath}.`) }
+  let schemaBytes
+  try {
+    schemaBytes = Buffer.byteLength(JSON.stringify(JSON.parse(readFileSync(schemaPath, 'utf8'))))
+  } catch (err) {
+    return { ...base, ...unavailable(`The schema at ${schemaPath} is not valid JSON: ${err.message}`) }
+  }
+  if (schemaBytes > MAX_SCHEMA_BYTES)
+    return {
+      ...base,
+      ...unavailable(`The schema is ${schemaBytes} bytes minified; the peer takes it as one argument, capped at ${MAX_SCHEMA_BYTES}.`),
+    }
 
-  const auth = checkAuth(cfg.peer)
-  if (!auth.ok) return { ...base, ...auth }
+  // The clock starts before the auth probe: `duration_ms` is what the caller
+  // waited, and the run gets whatever budget the probe left.
+  const started = Date.now()
+  const auth = checkAuth(cfg.peer, execFileSync, Math.floor(cfg.timeoutMs / 4))
+  if (!auth.ok) return { ...base, duration_ms: Date.now() - started, ...auth }
 
   const { command, argv: args } = buildInvocation({
     peer: cfg.peer,
@@ -350,13 +378,12 @@ export async function main(argv) {
     lastMessagePath,
     model: cfg.model,
   })
-  const started = Date.now()
   const run = await runBounded({
     command,
     argv: args,
     cwd: repoRoot,
     stdin: readFileSync(promptPath, 'utf8'),
-    timeoutMs: cfg.timeoutMs,
+    timeoutMs: Math.max(1000, cfg.timeoutMs - (Date.now() - started)),
   })
   const duration_ms = Date.now() - started
   const tail = (run.stderr || '').split('\n').filter(Boolean).slice(-10).join('\n')
