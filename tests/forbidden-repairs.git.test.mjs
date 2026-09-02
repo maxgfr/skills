@@ -123,6 +123,62 @@ test('an unresolvable ref fails loudly instead of reporting CLEAN', () => {
   }
 })
 
+const PKG = (scripts, deps) =>
+  JSON.stringify({ name: 'x', version: '1.0.0', scripts, devDependencies: deps }, null, 2) + '\n'
+
+test('a gate script rewritten deep inside a long scripts block is refused', () => {
+  // The hunk starts ten lines inside "scripts", so its opener is elided from
+  // the patch. --since reads the working-tree file and places the line.
+  const dir = repo()
+  try {
+    const scripts = {}
+    for (let i = 0; i < 12; i++) scripts[`task${i}`] = `echo ${i}`
+    scripts.test = 'vitest run'
+    writeFileSync(join(dir, 'package.json'), PKG(scripts, { vitest: '^1.0.0' }))
+    git(dir, 'add', '-A')
+    git(dir, 'commit', '-qm', 'pkg')
+    writeFileSync(join(dir, 'package.json'), PKG({ ...scripts, test: 'echo skipped' }, { vitest: '^1.0.0' }))
+    const r = guard(dir)
+    assert.equal(r.verdict, 'FORBIDDEN', JSON.stringify(r))
+    assert.equal(r.violations[0].rule, 'gate-tampering')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a dependency added far from the scripts opener is not gate tampering', () => {
+  const dir = repo()
+  try {
+    const scripts = { test: 'vitest run' }
+    const deps = {}
+    for (let i = 0; i < 12; i++) deps[`dep${i}`] = '^1.0.0'
+    writeFileSync(join(dir, 'package.json'), PKG(scripts, deps))
+    git(dir, 'add', '-A')
+    git(dir, 'commit', '-qm', 'pkg')
+    writeFileSync(join(dir, 'package.json'), PKG(scripts, { ...deps, testcontainers: '^10.0.0' }))
+    const r = guard(dir)
+    assert.equal(r.verdict, 'CLEAN', JSON.stringify(r.violations))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('git mv of a workflow file is caught as a rename', () => {
+  const dir = repo()
+  try {
+    mkdirSync(join(dir, '.github', 'workflows'), { recursive: true })
+    writeFileSync(join(dir, '.github', 'workflows', 'ci.yml'), 'on: push\njobs: {}\n')
+    git(dir, 'add', '-A')
+    git(dir, 'commit', '-qm', 'ci')
+    git(dir, 'mv', '.github/workflows/ci.yml', '.github/workflows/ci.yml.disabled')
+    const r = guard(dir)
+    assert.equal(r.verdict, 'FORBIDDEN', JSON.stringify(r))
+    assert.ok(r.violations.some((v) => v.rule === 'gate-tampering'))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('an untracked binary file is noted, not scanned', () => {
   const dir = repo()
   try {

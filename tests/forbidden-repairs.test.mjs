@@ -77,8 +77,76 @@ test('editing CI is refused — that is rewriting the definition of green', () =
 })
 
 test('rewriting a gate script in package.json is refused', () => {
-  const r = scan(patch('package.json', '+    "test": "echo skipped",'))
+  const r = scan(patch('package.json', '   "scripts": {', '+    "test": "echo skipped",', '     "lint": "eslint ."'))
   assert.equal(r.violations[0].rule, 'gate-tampering')
+})
+
+test('adding a dependency whose name starts like a gate is not gate tampering', () => {
+  // `"testcontainers":`, `"lint-staged":`, `"build-tools":` all begin with a
+  // gate word. Only the scripts block defines a gate; a dependencies block
+  // cannot, and refusing it reverts an honest install.
+  const r = scan(
+    patch(
+      'package.json',
+      '   "devDependencies": {',
+      '+    "testcontainers": "^10.0.0",',
+      '+    "lint-staged": "^15.0.0",',
+      '     "vitest": "^1.0.0"',
+    ),
+  )
+  assert.equal(r.verdict, 'CLEAN', JSON.stringify(r.violations))
+})
+
+test('a scripts block that closed before the change no longer scopes it', () => {
+  const r = scan(
+    patch(
+      'package.json',
+      '   "scripts": {',
+      '     "test": "vitest"',
+      '   },',
+      '   "devDependencies": {',
+      '+    "testcontainers": "^10.0.0",',
+    ),
+  )
+  assert.equal(r.verdict, 'CLEAN', JSON.stringify(r.violations))
+})
+
+test('a package.json change the patch cannot place is noted, not flagged', () => {
+  // The hunk starts inside some object whose opener was elided. From a patch
+  // alone there is no telling whether it is scripts or dependencies, and a
+  // guess in either direction is a wrong guard. --since resolves it.
+  const r = scan(patch('package.json', '+    "test": "echo skipped",'))
+  assert.equal(r.verdict, 'CLEAN')
+  assert.ok(r.notes.some((n) => /could not be placed/.test(n)), JSON.stringify(r.notes))
+})
+
+test('renaming a CI workflow away is gate tampering even with no content change', () => {
+  // A pure rename has no +/- lines. `ci.yml` → `ci.yml.disabled` switches the
+  // gate off and, read line by line, changed nothing.
+  const p = [
+    'diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml.disabled',
+    'similarity index 100%',
+    'rename from .github/workflows/ci.yml',
+    'rename to .github/workflows/ci.yml.disabled',
+  ].join('\n')
+  const r = scan(p)
+  assert.equal(r.verdict, 'FORBIDDEN')
+  assert.equal(r.violations[0].rule, 'gate-tampering')
+  assert.equal(r.violations[0].kind, 'rename')
+  assert.ok(r.files_changed.includes('.github/workflows/ci.yml'))
+  assert.ok(r.files_changed.includes('.github/workflows/ci.yml.disabled'))
+})
+
+test('renaming a source file is not gate tampering', () => {
+  const p = [
+    'diff --git a/src/a.ts b/src/b.ts',
+    'similarity index 100%',
+    'rename from src/a.ts',
+    'rename to src/b.ts',
+  ].join('\n')
+  const r = scan(p)
+  assert.equal(r.verdict, 'CLEAN', JSON.stringify(r.violations))
+  assert.deepEqual(r.files_changed, ['src/a.ts', 'src/b.ts'])
 })
 
 test('editing the plan to match the code is refused when the plan is named', () => {
@@ -87,6 +155,21 @@ test('editing the plan to match the code is refused when the plan is named', () 
     'docs/plan.md',
   ])
   assert.equal(r.violations[0].rule, 'spec-rewrite')
+})
+
+test('the plan is recognised when named by an absolute path', () => {
+  // Phase 0 hands the guard `~/.claude/plans/…` or `/repo/docs/plan.md`, while
+  // the diff says `docs/plan.md`. Compared raw, the rule never fired.
+  const r = scan(patch('docs/plan.md', '+ ~~rate-limit the endpoint~~ (dropped)'), [
+    '--plan',
+    resolve(process.cwd(), 'docs/plan.md'),
+  ])
+  assert.equal(r.violations[0].rule, 'spec-rewrite')
+})
+
+test('editing a document that is not the plan is not a spec rewrite', () => {
+  const r = scan(patch('docs/plan.md', '+ a note'), ['--plan', 'docs/other.md'])
+  assert.equal(r.verdict, 'CLEAN', JSON.stringify(r.violations))
 })
 
 test('an empty catch is refused', () => {

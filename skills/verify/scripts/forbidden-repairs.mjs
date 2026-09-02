@@ -24,6 +24,7 @@
 
 import { readFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
+import { relative, resolve, sep } from 'node:path'
 
 const args = process.argv.slice(2)
 const pretty = args.includes('--pretty')
@@ -111,7 +112,9 @@ function readPatch() {
     // An unresolvable baseline must fail loudly. Swallowing it would report a
     // clean round over changes nobody looked at.
     git(['rev-parse', '--verify', '--quiet', `${since}^{commit}`], { stdio: 'pipe' })
-    base = git(['diff', since])
+    // -M: a renamed gate file has no +/- lines at all. Without rename headers,
+    // `ci.yml` → `ci.yml.disabled` is a round that changed nothing.
+    base = git(['diff', '-M', since])
   } else {
     const patch = argFor('--patch')
     if (patch) base = readFileSync(patch, 'utf8')
@@ -246,6 +249,122 @@ function matchesFile(matcher, file) {
   return typeof matcher === 'function' ? matcher(file) : matcher.test(file)
 }
 
+// ------------------------------------------------- package.json "scripts"
+
+// GATE_SCRIPT_LINE matches any key that *starts with* test/lint/build/check —
+// which is `"testcontainers":`, `"lint-staged":` and `"build-tools":` in a
+// dependencies block. Only the scripts block defines a gate, so the rule is
+// scoped to it: definitively from the working-tree file when there is one, and
+// from the hunk's own context lines otherwise.
+
+const OBJECT_KEY_OPENER = /"([^"\\]*)"\s*:\s*\{/
+
+// The 1-based line range of the top-level "scripts" object, or null.
+function scriptsRange(text) {
+  let depth = 0
+  let line = 1
+  let inString = false
+  let escaped = false
+  let token = ''
+  let lastKey = null
+  let pendingKey = null
+  let from = null
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    if (c === '\n') line++
+    if (inString) {
+      if (escaped) escaped = false
+      else if (c === '\\') escaped = true
+      else if (c === '"') {
+        inString = false
+        if (depth === 1) lastKey = token
+      } else token += c
+      continue
+    }
+    if (c === '"') {
+      inString = true
+      token = ''
+    } else if (c === ':') {
+      if (depth === 1) pendingKey = lastKey
+    } else if (c === '{') {
+      if (depth === 1 && pendingKey === 'scripts') from = line
+      pendingKey = null
+      depth++
+    } else if (c === '}') {
+      depth--
+      if (depth === 1 && from !== null) return [from, line]
+    } else if (c === ',' && depth === 1) pendingKey = null
+  }
+  return null
+}
+
+// Walks the hunk up to the change: which `"key": {` object is open at that
+// point. `null` when the hunk starts inside an object whose opener was elided.
+function sectionAt(seq, pos) {
+  const stack = []
+  let sawClose = false
+  for (let i = 0; i < pos; i++) {
+    const { text, kind } = seq[i]
+    if (kind === 'del') continue // gone from the new file
+    const m = OBJECT_KEY_OPENER.exec(text)
+    const code = blankStrings(text)
+    let opens = (code.match(/\{/g) || []).length
+    const closes = (code.match(/\}/g) || []).length
+    if (m) {
+      stack.push(m[1])
+      opens--
+    }
+    for (let k = 0; k < closes; k++) {
+      if (stack.length) stack.pop()
+      else sawClose = true
+    }
+    for (let k = 0; k < opens; k++) stack.push(null)
+  }
+  if (stack.length) return stack[stack.length - 1]
+  // Every opener has been closed — or one closed that was never seen, which
+  // means the change now sits at the level the hunk started in, only higher.
+  return sawClose ? '(top)' : null
+}
+
+let repoRoot = null
+function repoTop() {
+  if (repoRoot !== null) return repoRoot || null
+  try {
+    repoRoot = git(['rev-parse', '--show-toplevel'], { stdio: 'pipe' }).trim()
+  } catch {
+    repoRoot = ''
+  }
+  return repoRoot || null
+}
+
+const scriptsRanges = new Map()
+function inScriptsBlock(change, hunkSeq, sinceMode) {
+  if (sinceMode) {
+    const top = repoTop()
+    if (top) {
+      if (!scriptsRanges.has(change.file)) {
+        let range = null
+        try {
+          range = scriptsRange(readFileSync(resolve(top, change.file), 'utf8'))
+        } catch {
+          range = null // deleted this round — nothing to place the line in
+        }
+        scriptsRanges.set(change.file, range)
+      }
+      const range = scriptsRanges.get(change.file)
+      if (range) return change.line >= range[0] && change.line <= range[1]
+      if (range === null && sinceMode) return false
+    }
+  }
+  const section = sectionAt(hunkSeq.get(change.hunk) || [], change.pos)
+  if (section === 'scripts') return true
+  if (section !== null) return false
+  notes.push(
+    `${change.file}:${change.line} could not be placed relative to "scripts" from the patch alone — not flagged. Use --since <ref> for a definitive scan.`,
+  )
+  return false
+}
+
 // ------------------------------------------------------------------- parse
 
 // Context lines are kept, not just +/-: an empty catch whose braces straddle an
@@ -253,9 +372,13 @@ function matchesFile(matcher, file) {
 function parse(patch) {
   const changes = []
   const byFile = new Map()
+  // Every line of every hunk in order, deletions included, so a change can be
+  // placed relative to the JSON object it sits in.
+  const hunkSeq = new Map()
   let file = null
   let newLine = 0
   let hunk = 0
+  let renameFrom = null
 
   // Keyed by hunk, not just by file. Lines from two hunks are not adjacent in
   // the real file — an elided gap sits between them — so a `/**` left open in
@@ -265,11 +388,30 @@ function parse(patch) {
     if (!byFile.has(key)) byFile.set(key, { file: f, lines: [] })
     byFile.get(key).lines.push({ n, text, added })
   }
+  const sequence = (text, kind) => {
+    if (!hunkSeq.has(hunk)) hunkSeq.set(hunk, [])
+    const seq = hunkSeq.get(hunk)
+    seq.push({ text, kind })
+    return seq.length - 1
+  }
 
   for (const line of patch.split('\n')) {
     if (line.startsWith('diff --git')) {
       const m = /diff --git a\/(.+?) b\/(.+)$/.exec(line)
       file = m ? m[2] : null
+      renameFrom = null
+      continue
+    }
+    if (line.startsWith('rename from ')) {
+      renameFrom = line.slice('rename from '.length).trim()
+      continue
+    }
+    if (line.startsWith('rename to ')) {
+      const to = line.slice('rename to '.length).trim()
+      // A pure rename has no hunk. It is still a change to both paths — and
+      // moving a workflow out of .github/workflows/ is the quietest way to
+      // switch a gate off.
+      changes.push({ file: to, from: renameFrom, line: 0, text: `rename from ${renameFrom}`, kind: 'rename' })
       continue
     }
     if (line.startsWith('+++ ')) {
@@ -287,15 +429,18 @@ function parse(patch) {
     if (!file) continue
     if (line.startsWith('+')) {
       const text = line.slice(1)
-      changes.push({ file, line: newLine, text, kind: 'add' })
+      changes.push({ file, line: newLine, text, kind: 'add', hunk, pos: sequence(text, 'add') })
       record(file, newLine++, text, true)
     } else if (line.startsWith('-')) {
-      changes.push({ file, line: newLine, text: line.slice(1), kind: 'del' })
+      const text = line.slice(1)
+      changes.push({ file, line: newLine, text, kind: 'del', hunk, pos: sequence(text, 'del') })
     } else if (line.startsWith(' ')) {
-      record(file, newLine++, line.slice(1), false)
+      const text = line.slice(1)
+      sequence(text, 'ctx')
+      record(file, newLine++, text, false)
     }
   }
-  return { changes, byFile }
+  return { changes, byFile, hunkSeq }
 }
 
 // -------------------------------------------------------- swallowed errors
@@ -346,8 +491,20 @@ function swallowedErrors(byFile) {
 // ------------------------------------------------------------------- check
 
 const { patch, untrackedScanned } = readPatch()
-const { changes, byFile } = parse(patch)
+const sinceMode = argFor('--since') !== null
+const { changes, byFile, hunkSeq } = parse(patch)
 const findings = []
+
+// The plan is named however the caller had it — absolute, under `~/.claude/`,
+// or `./docs/plan.md` — while diff paths are repo-relative. Comparing the two
+// raw is a rule that never fires on exactly the invocation Phase 0 produces.
+const planForms = new Set()
+if (planPath) {
+  planForms.add(planPath.replace(/^\.\//, ''))
+  const top = sinceMode ? repoTop() : null
+  const rel = relative(top || process.cwd(), resolve(planPath)).split(sep).join('/')
+  if (rel && !rel.startsWith('..')) planForms.add(rel)
+}
 
 function flag(rule, why, change) {
   // Two rules can name the same cheat — `it.skip(` matches both the named
@@ -395,15 +552,20 @@ for (const change of changes) {
       flag('test-deletion', 'Removes an assertion the change was supposed to satisfy.', change)
   }
 
-  if (GATE_FILE.test(change.file)) {
+  if (GATE_FILE.test(change.file) || (change.from && GATE_FILE.test(change.from))) {
     flag('gate-tampering', 'Edits the definition of green instead of meeting it.', change)
   }
 
-  if (/(^|\/)package\.json$/.test(change.file) && GATE_SCRIPT_LINE.test(change.text)) {
+  if (
+    change.kind !== 'rename' &&
+    /(^|\/)package\.json$/.test(change.file) &&
+    GATE_SCRIPT_LINE.test(change.text) &&
+    inScriptsBlock(change, hunkSeq, sinceMode)
+  ) {
     flag('gate-tampering', 'Rewrites a gate script instead of satisfying it.', change)
   }
 
-  if (planPath && change.file === planPath.replace(/^\.\//, '')) {
+  if (planForms.has(change.file) || (change.from && planForms.has(change.from))) {
     flag('spec-rewrite', 'Rewrites the promise to match the code.', change)
   }
 }
@@ -418,7 +580,7 @@ const warnings = findings.filter((f) => f.severity === 'warning')
 process.stdout.write(
   JSON.stringify(
     {
-      files_changed: [...new Set(changes.map((c) => c.file))],
+      files_changed: [...new Set(changes.flatMap((c) => (c.from ? [c.from, c.file] : [c.file])))],
       untracked_scanned: untrackedScanned,
       violations,
       warnings,
