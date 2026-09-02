@@ -337,9 +337,38 @@ function repoTop() {
   return repoRoot || null
 }
 
+// Under --since both versions of the file are readable, so the question the
+// rule actually asks — did a gate script change? — has an exact answer, and it
+// beats placing a diff line inside a range. It survives reformatting, key
+// reordering, and a minified package.json whose every edit is one line and
+// whose range therefore discriminates nothing.
+const scriptsVerdicts = new Map()
+function gateScriptsUntouched(file, since) {
+  if (scriptsVerdicts.has(file)) return scriptsVerdicts.get(file)
+  const canon = (v) =>
+    v && typeof v === 'object'
+      ? JSON.stringify(Object.keys(v).sort().map((k) => [k, v[k]]))
+      : JSON.stringify(v ?? null)
+  let verdict = null
+  const top = repoTop()
+  if (top) {
+    try {
+      const before = JSON.parse(git(['show', `${since}:${file}`], { stdio: 'pipe' })).scripts
+      const after = JSON.parse(readFileSync(resolve(top, file), 'utf8')).scripts
+      verdict = canon(before) === canon(after)
+    } catch {
+      verdict = null // new, deleted, or unparseable on one side — cannot decide
+    }
+  }
+  scriptsVerdicts.set(file, verdict)
+  return verdict
+}
+
 const scriptsRanges = new Map()
 function inScriptsBlock(change, hunkSeq, sinceMode) {
   if (sinceMode) {
+    // Nothing under "scripts" moved, whatever the diff lines look like.
+    if (gateScriptsUntouched(change.file, argFor('--since')) === true) return false
     const top = repoTop()
     if (top) {
       if (!scriptsRanges.has(change.file)) {
@@ -352,7 +381,10 @@ function inScriptsBlock(change, hunkSeq, sinceMode) {
         scriptsRanges.set(change.file, range)
       }
       const range = scriptsRanges.get(change.file)
-      if (range) return change.line >= range[0] && change.line <= range[1]
+      // A single-line range is a minified file: the scripts block and every
+      // other key share that line, so the range cannot localise anything. We
+      // already know from the comparison above that a script did change.
+      if (range) return range[0] === range[1] ? true : change.line >= range[0] && change.line <= range[1]
       // No "scripts" block in the file as it now stands. An added key cannot
       // sit in a block that does not exist — but a deleted one means the block
       // itself went, which is the most complete gate tampering there is.

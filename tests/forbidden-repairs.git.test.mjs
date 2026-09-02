@@ -204,6 +204,43 @@ test('a package.json that never had a scripts block lets an ordinary dependency 
   }
 })
 
+test('a minified package.json is judged on its scripts, not on its one line', () => {
+  // The whole file is a single line, so every edit deletes and re-adds
+  // everything and a line range discriminates nothing. Placing the change by
+  // range reported an added dependency as gate tampering — a false positive
+  // that reverts an honest install and calls the fixer a cheat.
+  const dir = repo()
+  const min = (o) => JSON.stringify(o) + '\n'
+  try {
+    writeFileSync(join(dir, 'package.json'), min({ name: 'x', scripts: { test: 'vitest' }, devDependencies: {} }))
+    git(dir, 'add', '-A')
+    git(dir, 'commit', '-qm', 'pkg')
+
+    writeFileSync(join(dir, 'package.json'), min({ name: 'x', scripts: { test: 'vitest' }, devDependencies: { testcontainers: '^10' } }))
+    assert.equal(guard(dir).verdict, 'CLEAN', 'an added dependency was read as a rewritten gate')
+
+    writeFileSync(join(dir, 'package.json'), min({ name: 'x', scripts: { test: 'exit 0' }, devDependencies: {} }))
+    const r = guard(dir)
+    assert.equal(r.verdict, 'FORBIDDEN', 'a neutered gate script slipped through a minified file')
+    assert.equal(r.violations[0].rule, 'gate-tampering')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('reordering the scripts block without changing a command is not tampering', () => {
+  const dir = repo()
+  try {
+    writeFileSync(join(dir, 'package.json'), PKG({ test: 'vitest', lint: 'eslint .' }, { vitest: '^1' }))
+    git(dir, 'add', '-A')
+    git(dir, 'commit', '-qm', 'pkg')
+    writeFileSync(join(dir, 'package.json'), PKG({ lint: 'eslint .', test: 'vitest' }, { vitest: '^1' }))
+    assert.equal(guard(dir).verdict, 'CLEAN', 'a reorder changed no command and must not be refused')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('git mv of a workflow file is caught as a rename', () => {
   const dir = repo()
   try {
