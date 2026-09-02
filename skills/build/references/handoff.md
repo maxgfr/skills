@@ -38,7 +38,15 @@ from the return value is printed only when it says more than the default line.
 |---|---|---|
 | `built` | the block, `Next: /verify <planPath>` | under `then verify`: run verify's Phase 0 with `planPath` and call its workflow, same turn. Otherwise stop. |
 | `blocked` | the block, the blocked step's notes, the skipped dependents | stop. The user decides: fix the plan, fix the step by hand, or `/build` again on the same plan — the worktree keeps what landed. |
+| `unproven` | the block, and **in these words**: an agent did not return, so those steps were never judged — this is not a verdict on the code | stop, and offer to re-run `/build` on the same plan. Do not describe an unproven step as failing, and do not read its code yourself to fill the gap: your reading is not the reviewer's run. |
 | `peer_unavailable` | the block, `peer_unavailable: <reason>` | stop. Do **not** build host-side. The user asked for the other agent; substituting yourself silently is the one thing this mode must not do. |
+
+`unproven` is the answer an outage produces — a quota, a timeout, a crashed
+agent. The files may well be correct; the point is that nobody checked, and a
+build that reported those steps as `blocked` would be blaming the code for an
+infrastructure failure. Re-running the build re-judges them; steps already
+`done` are not re-implemented, because the plan's own `Verify:` commands still
+pass and the reviewer says so.
 
 **Name the plan on the verify call.** `verify` ranks the host's own plan
 artifact above `docs/plans/`, so a bare `/verify` can pick up a plan-mode

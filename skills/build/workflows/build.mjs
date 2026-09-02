@@ -56,8 +56,20 @@ for (const s of steps)
     notes: null,
   })
 const skipped = []
+const unprovenSteps = []
 let stoppedBy = null
 let peerFailure = null
+
+// An agent that never returned found nothing because it never ran. Reporting
+// that as a rejected step blames the code for an outage, retries an
+// implementer whose work may have been fine, and puts a judgement in the
+// record that nobody made. `unproven` is the third answer, and it is not a
+// pass: the build still refuses to hand off.
+function unproven(rec, why) {
+  rec.status = 'unproven'
+  rec.notes = why
+  unprovenSteps.push({ id: rec.id, why })
+}
 
 const CONTEXT = [
   `Repo — an isolated worktree, the only place you may write: ${cwd}`,
@@ -159,6 +171,7 @@ Rules:
     ${step.verifyCmd}
   Expected: ${step.verifyExpected || 'see the step'}
 - Report its exit code and the first 15 lines of its output verbatim. A command you did not run to completion has no exit code: report -1 and say why in notes.
+- files_touched holds paths relative to ${cwd}, never absolute ones — they go into a record another agent reads against the plan.
 - done_claimed is true only if the Verify command exited 0 AND every bullet under Change is in place.
 
 ${FORBIDDEN}${
@@ -251,13 +264,15 @@ async function runStep(id) {
         label: rec.attempts > 1 ? `impl:${id}:retry` : `impl:${id}`,
         phase: 'Steps',
       })
-      if (impl && impl.blocked_by) {
+      if (!impl)
+        return unproven(rec, 'the implementer never returned, so nothing about this step was recorded. It may have written files before it died — check the worktree.')
+      if (impl.blocked_by) {
         rec.status = 'blocked'
         rec.notes = `implementer: ${impl.blocked_by}`
         return
       }
-      implExit = impl && typeof impl.verify_exit_code === 'number' ? impl.verify_exit_code : null
-      rec.files_touched = (impl && impl.files_touched) || []
+      implExit = typeof impl.verify_exit_code === 'number' ? impl.verify_exit_code : null
+      rec.files_touched = impl.files_touched || []
     }
 
     const rev = await agent(reviewBrief(step), {
@@ -267,6 +282,10 @@ async function runStep(id) {
       label: `review:${id}`,
       phase: 'Steps',
     })
+    // Not a rejection — an absence. Retrying the implementer here spends a
+    // second one against the same outage and calls the result a code problem.
+    if (!rev)
+      return unproven(rec, 'the reviewer never returned, so the step was never judged. The implementer may well have got it right; nobody checked.')
 
     // The guard runs regardless of what anyone claimed — after every step, on
     // the whole diff since the baseline. One forbidden hunk anywhere stops the
@@ -278,7 +297,12 @@ async function runStep(id) {
       label: `guard:${id}`,
       phase: 'Guard',
     })
-    if (guard && guard.verdict === 'FORBIDDEN') {
+    // No guard, no clean bill. A step whose diff was never scanned cannot be
+    // called done: that scan is the only thing standing between the build and
+    // a step that landed by silencing its own proof.
+    if (!guard)
+      return unproven(rec, 'the guard never returned, so the diff was never scanned for silencing repairs.')
+    if (guard.verdict === 'FORBIDDEN') {
       await agent(revertBrief(guard), { model: mdl('implementer'), label: 'revert-forbidden', phase: 'Guard' })
       stoppedBy = `forbidden-repair: ${guard.violations.map((v) => `${v.rule} @ ${v.file}`).join(', ')}`
       rec.status = 'blocked'
@@ -288,18 +312,18 @@ async function runStep(id) {
 
     // Done needs all three: the implementer's run passed (host mode), the
     // reviewer's own run passed, and the reviewer accepted the spec and the
-    // quality. A reviewer that returned nothing accepted nothing.
-    const reviewExit = rev && typeof rev.verify_exit_code === 'number' ? rev.verify_exit_code : null
+    // quality. A reviewer that answered without an exit code proved nothing.
+    const reviewExit = typeof rev.verify_exit_code === 'number' ? rev.verify_exit_code : null
     rec.exit_code = reviewExit !== null ? reviewExit : implExit
     const proven = (mode === 'peer' || implExit === 0) && reviewExit === 0
-    const accepted = !!rev && rev.spec_ok === true && rev.quality_ok === true
+    const accepted = rev.spec_ok === true && rev.quality_ok === true
     if (proven && accepted) {
       rec.status = 'done'
       rec.notes = null
       return
     }
 
-    const issues = ((rev && rev.issues) || []).map((i) => `- ${i.file}:${i.line} [${i.kind}] ${i.issue}`)
+    const issues = (rev.issues || []).map((i) => `- ${i.file}:${i.line} [${i.kind}] ${i.issue}`)
     if (implExit !== null && implExit !== 0) issues.unshift(`- the Verify command exited ${implExit} for the implementer`)
     if (reviewExit !== 0) issues.unshift(`- the Verify command exited ${reviewExit === null ? 'without a result' : reviewExit} for the reviewer`)
     feedback = issues.join('\n') || '- the reviewer did not accept the step and gave no detail'
@@ -356,17 +380,28 @@ for (const rec of state.values()) {
 phase('Handoff')
 
 const table = [...state.values()]
+// Four outcomes, not two. `unproven` is what an outage produces: nothing is
+// known to be wrong, and nothing was checked. Reporting it as `blocked` blames
+// the code; reporting it as `built` would be a lie. Neither hands off.
 const status = peerFailure
   ? 'peer_unavailable'
-  : stoppedBy || table.some((r) => r.status !== 'done')
+  : stoppedBy || table.some((r) => r.status === 'blocked')
     ? 'blocked'
-    : 'built'
+    : table.some((r) => r.status === 'unproven')
+      ? 'unproven'
+      : table.every((r) => r.status === 'done')
+        ? 'built'
+        : 'blocked'
 
 const residualRisk = [
   'build proves each step by its own Verify command; the whole is proven by /verify, which has not run yet.',
 ]
 if (mode === 'peer') residualRisk.push("the peer's own reports were not used as evidence — every step was re-run by the reviewer.")
 if (stoppedBy) residualRisk.push(`the build stopped: ${stoppedBy}`)
+if (unprovenSteps.length)
+  residualRisk.push(
+    `NOT JUDGED — ${unprovenSteps.map((u) => `${u.id}: ${u.why}`).join(' · ')} An agent that never returned is not a verdict on the code; re-run the build for these steps before reading anything into them.`,
+  )
 
 const summary = {
   status,
@@ -376,6 +411,7 @@ const summary = {
   baseline,
   steps: table,
   skipped,
+  unproven: unprovenSteps,
   stopped_by: stoppedBy,
   residual_risk: residualRisk,
 }
@@ -386,9 +422,10 @@ await agent(
 - A status line: ${status}, plan ${planPath}, worktree ${cwd}, mode ${mode}.
 - STEPS: one row per step — id, title, status, attempts, Verify command, exit code, files touched.
 - SKIPPED: each skipped step and the dependency that blocked it.
+- NOT JUDGED: each step whose status is "unproven", with the reason verbatim. Say plainly that an agent did not return and the step was therefore never judged — do not describe these as failing.
 - STOPPED BY, if set.
 - RESIDUAL RISK: the list in the data.
-- NEXT: ${status === 'built' ? `run /verify ${planPath}` : 'the blocked steps above, then /build again on the same plan'}.
+- NEXT: ${status === 'built' ? `run /verify ${planPath}` : status === 'unproven' ? 'run /build again on the same plan — the steps above were never judged' : 'the blocked steps above, then /build again on the same plan'}.
 
 Report back only the path.
 

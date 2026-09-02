@@ -59,12 +59,17 @@ const IMPL_OK = { done_claimed: true, files_touched: ['src/x.ts'], verify_cmd: '
 const REVIEW_OK = { spec_ok: true, quality_ok: true, verify_exit_code: 0, verify_output: 'ok', issues: [] }
 const GUARD_CLEAN = { verdict: 'CLEAN', violations: [] }
 
+// Longest pattern wins, so `review:S-002` beats `review:` no matter which order
+// the scenario spread them in. Matching on insertion order instead means a test
+// can silently exercise the generic stub it thought it had overridden.
 function makeAgent(script, calls) {
+  const patterns = Object.keys(script).sort((a, b) => b.length - a.length)
   return async (prompt, opts = {}) => {
     const label = opts.label || 'unlabelled'
     calls.push(label)
-    for (const [pattern, value] of Object.entries(script)) {
+    for (const pattern of patterns) {
       if (label === pattern || label.startsWith(pattern)) {
+        const value = script[pattern]
         return typeof value === 'function' ? value(prompt, opts, label) : value
       }
     }
@@ -161,9 +166,58 @@ test("a reviewer whose own run of the Verify command fails is not overruled by t
   assert.equal(result.steps[0].exit_code, 2, "the reviewer's exit code is the one recorded")
 })
 
-test('a reviewer that returns nothing accepts nothing', async () => {
-  const { result } = await run({}, { 'review:S-001': null, ...HAPPY })
-  assert.equal(result.steps[0].status, 'blocked')
+test('a reviewer that never returned leaves the step unproven, not blocked, and triggers no retry', async () => {
+  // Observed for real: eleven agents died on a quota limit mid-run, and the
+  // workflow reported the steps as blocked — blaming the code for an outage,
+  // and spending a second implementer against the same outage. An agent that
+  // never ran found nothing because it never ran.
+  const { result, calls } = await run({}, { ...HAPPY, 'review:S-001': null })
+  const s1 = result.steps[0]
+  assert.equal(s1.status, 'unproven')
+  assert.match(s1.notes, /never returned/)
+  assert.equal(s1.attempts, 1, 'an outage must not spend a second implementer')
+  assert.ok(!calls.includes('impl:S-001:retry'))
+  assert.equal(result.status, 'unproven')
+  assert.equal(result.next, null, 'unproven must never hand off to verify')
+  assert.ok(result.unproven.some((u) => u.id === 'S-001'))
+  assert.ok(
+    result.residual_risk.some((r) => /NOT JUDGED/.test(r) && /S-001/.test(r)),
+    JSON.stringify(result.residual_risk),
+  )
+})
+
+test('an implementer or a guard that never returned is unproven too', async () => {
+  const noImpl = await run({}, { ...HAPPY, 'impl:S-001': null })
+  assert.equal(noImpl.result.steps[0].status, 'unproven')
+  assert.match(noImpl.result.steps[0].notes, /implementer never returned/)
+  assert.ok(!noImpl.calls.includes('review:S-001'), 'the reviewer ran with nothing to review')
+
+  // No guard, no clean bill: the scan is the only thing between the build and
+  // a step that landed by silencing its own proof.
+  const noGuard = await run({}, { ...HAPPY, 'guard:S-001': null })
+  assert.equal(noGuard.result.steps[0].status, 'unproven')
+  assert.match(noGuard.result.steps[0].notes, /guard never returned/)
+  assert.equal(noGuard.result.status, 'unproven')
+})
+
+test('a step nobody judged still stops the wave that depended on it', async () => {
+  const { result } = await run({ steps: FAN, waves: FAN_WAVES }, { ...HAPPY, 'review:S-001': null })
+  assert.equal(result.steps.find((s) => s.id === 'S-002').status, 'skipped')
+  assert.ok(result.skipped.some((s) => s.id === 'S-002' && s.because === 'S-001'))
+})
+
+test('unproven and blocked are different answers, and blocked wins when both happen', async () => {
+  const { result } = await run(
+    { steps: FAN, waves: FAN_WAVES },
+    {
+      ...HAPPY,
+      'review:S-002': { ...REVIEW_OK, spec_ok: false, issues: [{ file: 'src/b.ts', line: 1, issue: 'missing', kind: 'spec' }] },
+      'review:S-003': null,
+    },
+  )
+  assert.equal(result.steps.find((s) => s.id === 'S-002').status, 'blocked')
+  assert.equal(result.steps.find((s) => s.id === 'S-003').status, 'unproven')
+  assert.equal(result.status, 'blocked', 'a real rejection outranks an outage')
 })
 
 test('a forbidden repair reverts the hunk, stops the build, and nothing later is implemented', async () => {
@@ -240,12 +294,15 @@ test('the guard is invoked as a transcription of the script, on the baseline and
   assert.ok(guardPrompt.includes('Do not interpret'))
 })
 
-test('the implementer brief carries the step verbatim and the forbidden list', async () => {
+test('the implementer brief carries the step verbatim, the forbidden list, and asks for relative paths', async () => {
   let brief = null
   await run({ steps: [CHAIN[0]], waves: [['S-001']] }, { ...HAPPY, 'impl:': (prompt) => ((brief = prompt), IMPL_OK) })
   assert.ok(brief.includes(CHAIN[0].raw))
   assert.ok(brief.includes('YOU MAY NOT'))
   assert.ok(brief.includes('npm test -- S-001'))
+  // A real run came back with absolute paths in the record, which another
+  // agent then has to reconcile with the plan's relative ones.
+  assert.match(brief, /files_touched holds paths relative to \/wt, never absolute/)
 })
 
 test('the workflow never reaches for the clock or a random number', () => {

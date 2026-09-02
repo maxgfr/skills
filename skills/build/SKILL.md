@@ -77,6 +77,11 @@ for hosts that dispatch by hand:
 - **Done** needs all three: implementer exit 0, reviewer exit 0, reviewer
   accepted. Otherwise one retry with the reviewer's issues, then `blocked`.
   Dependents of a blocked step are `skipped` by name, never attempted.
+- **An agent that never returned** — errored, timed out, hit a quota — makes
+  the step `unproven`, not `blocked`, and buys no retry. Nothing is known to be
+  wrong and nothing was checked; blaming the code for an outage is the mistake
+  this status exists to prevent. It is not a pass: the build still refuses to
+  hand off.
 - **`peer` mode** replaces the implementer with `scripts/peer-build.mjs`, which
   runs the other CLI in the worktree with a write sandbox and nothing more —
   no approval bypass, no full access. It never runs the Verify command and never
@@ -96,6 +101,8 @@ table, not as prose. Then:
 built      → /verify <planPath>     (name the path — verify ranks the host's
                                      own plan artifact above docs/plans/)
 blocked    → the blocked step, its notes, the skipped dependents; stop.
+unproven   → an agent never returned, so those steps were never judged. Say
+             that, offer to re-run; never call an unjudged step failing.
 peer_unavailable → say so in those words, and stop. Do not build host-side
                    unless the user asks again without `peer`.
 ```

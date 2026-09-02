@@ -38,6 +38,7 @@ Rules:
     <verifyCmd>
   Expected: <verifyExpected>
 - Report its exit code and the first 15 lines of its output verbatim. A command you did not run to completion has no exit code: report -1 and say why in notes.
+- files_touched holds paths relative to <cwd>, never absolute ones — they go into a record another agent reads against the plan.
 - done_claimed is true only if the Verify command exited 0 AND every bullet under Change is in place.
 
 <FORBIDDEN>
@@ -117,10 +118,21 @@ last step, never before the first.
 A step is `done` when **all** of: the implementer's `verify_exit_code` is 0
 (host mode — in peer mode the peer's claims are not consulted), the reviewer's
 `verify_exit_code` is 0, and the reviewer returned `spec_ok: true` and
-`quality_ok: true`. A reviewer that returned nothing accepted nothing.
+`quality_ok: true`.
 
-Anything else: one retry with the reviewer's issues, then `blocked`. A
-`FORBIDDEN` guard at any point: revert, `stopped_by`, and nothing further is
-implemented. An implementer that returns `blocked_by`: `blocked` at once, no
-retry — it told you the plan is short, and a second attempt will not lengthen
-it.
+Anything else, in order:
+
+| What happened | Status | Retry? |
+|---|---|---|
+| The reviewer rejected it, or a Verify command exited non-zero | `blocked` after one retry with the reviewer's issues | yes, once |
+| The implementer returned `blocked_by` | `blocked` at once | no — it told you the plan is short, and a second attempt will not lengthen it |
+| The guard returned `FORBIDDEN` | `blocked`, revert the hunks, `stopped_by`, nothing further is implemented | no |
+| **An agent did not return at all** — it errored, timed out, or hit a quota | **`unproven`** | **no** |
+
+That last row is the one worth getting right. An agent that never ran found
+nothing because it never ran, which is not the same as a step that failed
+review. Marking it `blocked` blames the code for an outage, and retrying the
+implementer spends a second one against the same outage. `unproven` is not a
+pass — the build still refuses to hand off to `verify` — it is the honest third
+answer, and the record says which steps nobody judged.
+
