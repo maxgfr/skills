@@ -878,6 +878,62 @@ const runState = {
 // green `deep` run has just as little to say.
 const reportWorthWriting = survivors.length > 0 || laneFailures.length > 0
 
+// The reporter transcribes; it does not need forty skeptic essays verbatim to
+// do that. Long free-text fields are clipped by name, and the whole payload is
+// capped — with a log line, because a silently shortened report is a report
+// that lies about what it holds.
+const REPORT_MAX_CHARS = 120000
+const REPORT_FIELD_LIMITS = {
+  reason: 300,
+  first_failing_lines: 500,
+  quote: 200,
+  failure_scenario: 600,
+  output_excerpt: 500,
+  missing_detail: 300,
+}
+
+function compactForReport(state) {
+  const clip = (s, n) => (s.length > n ? `${s.slice(0, n)}… [${s.length - n} more chars clipped]` : s)
+  const walk = (node, key) => {
+    if (typeof node === 'string') return REPORT_FIELD_LIMITS[key] ? clip(node, REPORT_FIELD_LIMITS[key]) : node
+    if (Array.isArray(node)) return node.map((n) => walk(n, key))
+    if (node && typeof node === 'object') {
+      const out = {}
+      for (const [k, v] of Object.entries(node)) out[k] = walk(v, k)
+      return out
+    }
+    return node
+  }
+  const compact = walk(state, null)
+  const ci = compact.detected_gates && compact.detected_gates.ci
+  if (ci && Array.isArray(ci.commands) && ci.commands.length > 20) {
+    ci.commands = [...ci.commands.slice(0, 20), `… ${ci.commands.length - 20} more CI commands omitted`]
+  }
+  let json = JSON.stringify(compact)
+  if (json.length > REPORT_MAX_CHARS) {
+    // The refuted list is the bulkiest optional section and the least needed
+    // by name: the count survives, the essays go.
+    compact.refuted = {
+      count: Array.isArray(state.refuted) ? state.refuted.length : 0,
+      note: 'refuted candidates omitted from this payload — the report exceeded its size cap',
+    }
+    json = JSON.stringify(compact)
+  }
+  let truncated = false
+  if (json.length > REPORT_MAX_CHARS) {
+    truncated = true
+    json = json.slice(0, REPORT_MAX_CHARS)
+  }
+  return { json, truncated, dropped: compact.refuted && compact.refuted.note ? 'refuted' : null }
+}
+
+const reportPayload = reportWorthWriting ? compactForReport(runState) : null
+if (reportPayload && (reportPayload.truncated || reportPayload.dropped))
+  log(
+    `report payload ${reportPayload.truncated ? `truncated at ${REPORT_MAX_CHARS} chars` : 'compacted'}` +
+      `${reportPayload.dropped ? ` — ${reportPayload.dropped} section replaced by its count` : ''}`,
+  )
+
 if (reportWorthWriting)
   await agent(
     `Write this verification run to disk. Four files, nothing else, no commentary.
@@ -899,8 +955,8 @@ Then prune: keep only the ${keepRuns} most recent run directories under ${report
 
 Create the directory if needed. Report back only the four paths.
 
-DATA:
-${JSON.stringify(runState).slice(0, 400000)}`,
+DATA${reportPayload.truncated ? ' (truncated at the size cap — the JSON below may end mid-value; write what is there and say so in RESIDUAL RISK)' : ''}:
+${reportPayload.json}`,
     { model: mdl('reporter'), effort: eff('reporter'), label: 'report', phase: 'Report' },
   )
 

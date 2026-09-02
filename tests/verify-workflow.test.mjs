@@ -71,7 +71,7 @@ function makeAgent(script, calls, seen = []) {
   }
 }
 
-function run(argsOverride, script) {
+function run(argsOverride, script, logs = []) {
   const calls = []
   const seen = []
   const args = {
@@ -89,7 +89,7 @@ function run(argsOverride, script) {
     },
     ...argsOverride,
   }
-  return compiled(args, makeAgent(script, calls, seen), parallel, pipeline, () => {}, () => {}, {
+  return compiled(args, makeAgent(script, calls, seen), parallel, pipeline, () => {}, (m) => logs.push(String(m)), {
     total: null,
     spent: () => 0,
     remaining: () => Infinity,
@@ -204,6 +204,62 @@ const ONE_BUG = {
 }
 
 const SURVIVES = { refuted: false, reason: 'reachable from the HTTP handler' }
+
+test('the reporter is handed a capped payload, and the cap is logged', async () => {
+  // Forty findings each carrying twenty thousand characters is 800 k of JSON.
+  // The reporter transcribes; handing it all of that buys nothing and can
+  // exceed what the agent accepts. Clip the long fields, cap the whole, say so.
+  const findings = Array.from({ length: 40 }, (_, i) => ({
+    file: `src/f${i}.ts`,
+    line: i + 1,
+    defect: `defect ${i} ` + 'x'.repeat(20000),
+    failure_scenario: 'scenario ' + 'y'.repeat(20000),
+    severity: 'major',
+    suggested_fix: 'fix',
+  }))
+  const logs = []
+  let reporterPrompt = null
+  await run(
+    {},
+    {
+      matrix: { ...BASE_MATRIX, behaviors: [] },
+      gates: PASSING_GATES,
+      'find:': { findings },
+      'judge:': { refuted: false, reason: 'reason ' + 'z'.repeat(20000) },
+      report: (prompt) => {
+        reporterPrompt = prompt
+        return 'written'
+      },
+    },
+    logs,
+  )
+  assert.ok(reporterPrompt, 'the report agent was not called')
+  assert.ok(reporterPrompt.length < 130000, `reporter prompt is ${reporterPrompt.length} chars`)
+  assert.ok(!reporterPrompt.includes('y'.repeat(700)), 'failure_scenario was not clipped')
+  assert.ok(!reporterPrompt.includes('z'.repeat(400)), 'the skeptic reason was not clipped')
+  assert.ok(logs.some((l) => /truncated|compacted/.test(l)), `no log line about the cap: ${logs.join(' | ')}`)
+})
+
+test('a small payload reaches the reporter intact, with no cap logged', async () => {
+  const logs = []
+  let reporterPrompt = null
+  await run(
+    {},
+    {
+      matrix: { ...BASE_MATRIX, behaviors: [] },
+      gates: PASSING_GATES,
+      'find:': ONE_BUG,
+      'judge:': SURVIVES,
+      report: (prompt) => {
+        reporterPrompt = prompt
+        return 'written'
+      },
+    },
+    logs,
+  )
+  assert.ok(reporterPrompt.includes('page=last returns an empty list'))
+  assert.ok(!logs.some((l) => /truncated|compacted/.test(l)), 'a small payload must not be reported as capped')
+})
 
 test('a fixer that reports fixed:false does not resolve its finding', async () => {
   const { result } = await run(LOOP_ARGS, {
