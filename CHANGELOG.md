@@ -1,3 +1,10 @@
+## [1.3.2](https://github.com/maxgfr/skills/compare/v1.3.1...v1.3.2) (2026-09-02)
+
+
+### Bug Fixes
+
+* **build:** stop retrying a peer step with a prompt that cannot carry the feedback ([8260328](https://github.com/maxgfr/skills/commit/8260328e9561e5904a25bdb855f9c12e46710141))
+
 ## [1.3.1](https://github.com/maxgfr/skills/compare/v1.3.0...v1.3.1) (2026-09-02)
 
 
