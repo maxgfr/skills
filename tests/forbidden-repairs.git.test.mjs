@@ -241,6 +241,45 @@ test('reordering the scripts block without changing a command is not tampering',
   }
 })
 
+test('the baseline verify actually passes is a stash SHA, and it resolves like any other ref', () => {
+  // Every test here used --since HEAD; production never does. verify's fix
+  // loop and build both take `git stash create` on a tree that already has
+  // the user's uncommitted work in it, and hand the guard that dangling
+  // commit — which the scripts comparison must be able to `git show` from.
+  const dir = repo()
+  try {
+    writeFileSync(join(dir, 'package.json'), PKG({ test: 'vitest' }, { vitest: '^1' }))
+    git(dir, 'add', '-A')
+    git(dir, 'commit', '-qm', 'pkg')
+
+    writeFileSync(join(dir, 'src', 'app.ts'), 'export const a = 2\n') // the user's own edit
+    const baseline = git(dir, 'stash', 'create').trim()
+    assert.match(baseline, /^[0-9a-f]{40}$/, 'expected a dangling stash commit')
+
+    writeFileSync(join(dir, 'package.json'), PKG({ test: 'vitest' }, { vitest: '^1', testcontainers: '^10' }))
+    const clean = (() => {
+      try {
+        return JSON.parse(execFileSync(process.execPath, [SCRIPT, '--since', baseline], { cwd: dir, encoding: 'utf8' }))
+      } catch (err) {
+        return JSON.parse(err.stdout)
+      }
+    })()
+    assert.equal(clean.verdict, 'CLEAN', JSON.stringify(clean.violations))
+
+    writeFileSync(join(dir, 'package.json'), PKG({ test: 'exit 0' }, { vitest: '^1' }))
+    const dirty = (() => {
+      try {
+        return JSON.parse(execFileSync(process.execPath, [SCRIPT, '--since', baseline], { cwd: dir, encoding: 'utf8' }))
+      } catch (err) {
+        return JSON.parse(err.stdout)
+      }
+    })()
+    assert.equal(dirty.verdict, 'FORBIDDEN', 'a neutered gate went unseen against a stash baseline')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('git mv of a workflow file is caught as a rename', () => {
   const dir = repo()
   try {
