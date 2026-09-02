@@ -19,6 +19,7 @@
   ],
   "skills": [
     "./skills/blueprint",
+    "./skills/build",
     "./skills/verify"
   ]
 }

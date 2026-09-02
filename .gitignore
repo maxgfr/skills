@@ -2,5 +2,7 @@ node_modules/
 .claude/verify/
 .agents/verify/
 .agents/crosscheck/
+.agents/build/
+.worktrees/
 .DS_Store
 *.log
