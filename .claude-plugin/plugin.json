@@ -18,6 +18,7 @@
     "skills"
   ],
   "skills": [
+    "./skills/using-maxgfr",
     "./skills/blueprint",
     "./skills/build",
     "./skills/verify"

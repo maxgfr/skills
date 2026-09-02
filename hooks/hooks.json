@@ -1,0 +1,28 @@
+{
+  "description": "maxgfr: inject the skill router at session start, and refuse to end a turn that changed source without a verify run",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/session-start.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/stop-guard.mjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
