@@ -353,7 +353,10 @@ function inScriptsBlock(change, hunkSeq, sinceMode) {
       }
       const range = scriptsRanges.get(change.file)
       if (range) return change.line >= range[0] && change.line <= range[1]
-      if (range === null && sinceMode) return false
+      // No "scripts" block in the file as it now stands. An added key cannot
+      // sit in a block that does not exist — but a deleted one means the block
+      // itself went, which is the most complete gate tampering there is.
+      return change.kind === 'del'
     }
   }
   const section = sectionAt(hunkSeq.get(change.hunk) || [], change.pos)

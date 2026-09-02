@@ -163,6 +163,47 @@ test('a dependency added far from the scripts opener is not gate tampering', () 
   }
 })
 
+test('deleting the whole scripts block is refused — the range it would be judged against is gone', () => {
+  // The completest gate tampering there is: with no "scripts" object left,
+  // scriptsRange has nothing to place the deleted lines in, and a rule that
+  // simply declined to flag would wave the whole thing through.
+  const dir = repo()
+  try {
+    writeFileSync(join(dir, 'package.json'), PKG({ test: 'vitest run', lint: 'eslint .' }, { vitest: '^1.0.0' }))
+    git(dir, 'add', '-A')
+    git(dir, 'commit', '-qm', 'pkg')
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({ name: 'x', version: '1.0.0', devDependencies: { vitest: '^1.0.0' } }, null, 2) + '\n',
+    )
+    const r = guard(dir)
+    assert.equal(r.verdict, 'FORBIDDEN', JSON.stringify(r))
+    assert.ok(r.violations.some((v) => v.rule === 'gate-tampering'))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a package.json that never had a scripts block lets an ordinary dependency edit through', () => {
+  const dir = repo()
+  try {
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({ name: 'x', version: '1.0.0', devDependencies: { vitest: '^1.0.0' } }, null, 2) + '\n',
+    )
+    git(dir, 'add', '-A')
+    git(dir, 'commit', '-qm', 'pkg')
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({ name: 'x', version: '1.0.0', devDependencies: { vitest: '^1.0.0', testcontainers: '^10.0.0' } }, null, 2) + '\n',
+    )
+    const r = guard(dir)
+    assert.equal(r.verdict, 'CLEAN', JSON.stringify(r.violations))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('git mv of a workflow file is caught as a rename', () => {
   const dir = repo()
   try {
