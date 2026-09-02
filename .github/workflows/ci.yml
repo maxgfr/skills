@@ -8,12 +8,18 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
 
       - name: Validate skills
         run: node scripts/validate-skills.mjs
@@ -24,5 +30,19 @@ jobs:
       - name: Plugin version is in step with package.json
         run: node scripts/sync-plugin-version.mjs --check
 
+  # A network fetch of a third-party CLI, kept out of the gate: it proves the
+  # installer can read this repo, and it must not be what turns a PR red when
+  # the registry is slow. Pinned, so a new release of the installer is a
+  # change somebody makes here rather than one that happens to every PR.
+  installer:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: The installer can read this repo
-        run: npx --yes skills@latest add ./ --list
+        run: npx --yes skills@1.5.23 add ./ --list
