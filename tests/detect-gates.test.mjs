@@ -137,6 +137,15 @@ test("an aggregate gate gets the combined budget, not a single gate's", () => {
   assert.equal(r.gates.find((g) => g.cmd === 'npm run test').timeout_s, 300)
 })
 
+test('a concurrently-based aggregate check is a gate; a concurrently-based dev server is not', () => {
+  // Denying every body that mentions `concurrently` dropped the one script a
+  // repo author most often uses to define green. What makes a body a dev
+  // server is the server.
+  const r = detect('concurrently')
+  assert.ok(cmds(r).includes('npm run check'), `check dropped: ${JSON.stringify(cmds(r))}`)
+  assert.ok(!cmds(r).includes('npm run dev'), 'a dev server is not a gate')
+})
+
 test('an empty directory yields no gates and says so', () => {
   const r = detect('.')
   assert.equal(r.gates.length, 0)

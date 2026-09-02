@@ -1,0 +1,10 @@
+{
+  "name": "concurrently-repo",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently \"vite dev\" \"tsc -w\"",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "check": "concurrently \"npm:lint\" \"npm:typecheck\""
+  }
+}

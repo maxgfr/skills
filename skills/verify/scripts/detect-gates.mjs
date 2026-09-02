@@ -29,8 +29,11 @@ const NAME_RULES = [
 
 // Names we never turn into a gate: they mutate, watch, or serve.
 const NAME_DENY = /(:fix|:write|--fix|watch|dev$|^dev|^start|^serve|^clean|:ui$|:debug$)/
-// Script bodies that reveal an interactive or mutating command.
-const BODY_DENY = /(--watch\b|--fix\b|--write\b|nodemon|vite dev|next dev|concurrently)/
+// Script bodies that reveal an interactive or mutating command. `concurrently`
+// is deliberately absent: `concurrently "npm:lint" "npm:typecheck"` is a common
+// shape for the aggregate check, and what makes a body a dev server is the
+// server, which the other alternatives still catch.
+const BODY_DENY = /(--watch\b|--fix\b|--write\b|nodemon|vite dev|next dev)/
 
 const args = process.argv.slice(2)
 const cwd = resolve(argFor('--cwd') ?? process.cwd())
@@ -41,17 +44,25 @@ function argFor(flag) {
   return i >= 0 && args[i + 1] ? args[i + 1] : null
 }
 
+// One read per path, ever. The lockfile probes and the manifest parse ask for
+// the same handful of files, and a stat-then-read is two syscalls where the
+// read alone answers both questions.
+const files = new Map()
 function read(...p) {
   const file = join(cwd, ...p)
+  if (files.has(file)) return files.get(file)
+  let text = null
   try {
-    return existsSync(file) ? readFileSync(file, 'utf8') : null
+    text = readFileSync(file, 'utf8')
   } catch {
-    return null
+    text = null
   }
+  files.set(file, text)
+  return text
 }
 
 function has(...p) {
-  return existsSync(join(cwd, ...p))
+  return read(...p) !== null
 }
 
 const notes = []
