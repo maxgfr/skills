@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/maxgfr/skills/compare/v1.3.3...v1.4.0) (2026-09-03)
+
+
+### Features
+
+* add native Codex plugin support ([78aac27](https://github.com/maxgfr/skills/commit/78aac27133c1e99525465b2bf7652f5b89bec111))
+
 ## [1.3.3](https://github.com/maxgfr/skills/compare/v1.3.2...v1.3.3) (2026-09-02)
 
 
