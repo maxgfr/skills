@@ -335,17 +335,7 @@ mentioned with a caveat.
 
 Not everything belongs here. A skill built around a substantial engine — a taint analyser, an indexer, a translation pipeline — gets its own repo and its own release cycle. This one is for process skills, which are mostly prose and a script or two.
 
-| | |
-|---|---|
-| [ultrasec](https://github.com/maxgfr/ultrasec) | Cross-file security audit: source→sink taint, CVE correlation, adversarially verified findings |
-| [ultraeval](https://github.com/maxgfr/ultraeval) | Evaluate a skill or codebase, grounded in real `file:line`, into a TDD fix backlog |
-| [ultraindex](https://github.com/maxgfr/ultraindex) | Turn a large repo into a navigable, citation-checked encyclopedia |
-| [ultradoc](https://github.com/maxgfr/ultradoc) | Answer precise questions about an open-source project from its real source |
-| [ultrasearch](https://github.com/maxgfr/ultrasearch) | Cited, tiered reports of what the web actually says |
-| [ultrai18n](https://github.com/maxgfr/ultrai18n) | Change a repo's language and prove nothing was missed |
-| [ultra11y](https://github.com/maxgfr/ultra11y) · [review-a11y](https://github.com/maxgfr/ultra11y) | WCAG 2.2 AA audits, and a11y review of a diff |
-| [construct](https://github.com/maxgfr/construct) · [reconstruct](https://github.com/maxgfr/reconstruct) | Idea → grounded SRD suite; repo → reconstruction PRDs |
-| [secretgate](https://github.com/maxgfr/secretgate) | Local secrets firewall — redact credentials before they reach the LLM |
+The current catalogue of separately published skills lives on my [GitHub profile](https://github.com/maxgfr).
 
 ## Development
 
