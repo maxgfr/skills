@@ -40,19 +40,22 @@ Everything the lanes need must be **resolved** before it goes in. The workflow i
 
 The script owns the pipeline: matrix → lanes → judging → report → loop. Every agent's output stays inside the workflow; what returns is the verdict object. Test logs, file reads and finder chatter never enter the session.
 
-Invoking `/verify` is itself the explicit opt-in the Workflow tool requires — a skill whose instructions say to call it.
+Invoking `verify` is itself the explicit opt-in the Workflow tool requires — a skill whose instructions say to call it.
 
 If the workflow fails mid-run, it returns a `runId`. Resume with `Workflow({scriptPath, resumeFromRunId})`: unchanged agent calls replay from cache, and only the failed step onward runs live.
 
 ## Tier 2 — Parallel subagents (including Codex)
 
-No Workflow tool, but a native subagent tool exists (for example Codex's subagent capability). Same phases, dispatched by hand:
+No Workflow tool, but a native subagent tool exists (for example Codex's
+subagent capability). Run `node scripts/fallback-plan.mjs --cwd <repo> --host
+<host> --pretty -- <verify arguments>` first. Its JSON is the authoritative
+phase and lane schedule; execute it without reconstructing policy by hand:
 
 1. **Matrix** — one agent, cheap model, returns the matrix JSON. Parse it yourself.
 2. **Lanes** — dispatch in one message so they run concurrently: one gate-runner, one agent per requirement group, one per finder lens, one per behavior claim, and — **only when `lanes.peer` is true** — one for the peer crosscheck. Collect the structured returns.
 
    Lane E matters most on this tier, because this is the tier Codex runs on: there the peer is `claude -p`, and `--host codex`. Getting that argument backwards asks Codex to consult itself. The lane's brief is in [`lanes.md`](lanes.md) and the engine is `scripts/peer-run.mjs`, which you invoke through Bash exactly as the Workflow tier does — it is a plain Node script and needs no host feature at all.
-3. **Dedup** — in your own head, not in an agent. Merge same-`file:line` candidates.
+3. **Dedup** — deterministically merge candidates with the same `file:line` before dispatching skeptics.
 4. **Judging** — one message dispatching every skeptic at once. Three for each blocking claim.
 5. **Report** — assemble and write the file yourself.
 6. **Loop** — fix agents grouped by file, then run `forbidden-repairs.mjs` yourself via Bash, then re-run the impacted gates.

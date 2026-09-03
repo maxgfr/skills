@@ -799,8 +799,9 @@ You may return severity_adjustment to DOWNGRADE a real but narrower finding. Nev
     }
     return parallel(skeptics).then((votes) => {
       const valid = votes.filter(Boolean)
-      // Majority of the panel that actually returned. A finding needs survivors,
-      // so agents that died do not count as votes to keep it.
+      // Majority of the requested panel. A missing skeptic cannot lower the
+      // bar and accidentally preserve a finding that the configured panel did
+      // not substantiate.
       const survives = valid.filter((v) => !v.refuted).length >= Math.ceil(panel / 2)
       const down = valid.map((v) => v.severity_adjustment).find((s) => s && s !== 'none')
       return {

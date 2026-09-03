@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// sync-plugin-version.mjs — .claude-plugin/plugin.json carries the version a
-// user actually installs, so it must never drift from package.json.
+// sync-plugin-version.mjs — both host manifests carry the version a user
+// installs, so neither may drift from package.json.
 //
 // semantic-release owns the number and hands it over during `prepare`; this
 // script is what writes it in both places.
@@ -26,10 +26,13 @@ if (setIndex >= 0 && !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(requested ?? ''
 }
 
 const pkgPath = join(root, 'package.json')
-const pluginPath = join(root, '.claude-plugin', 'plugin.json')
+const pluginPaths = [
+  join(root, '.claude-plugin', 'plugin.json'),
+  join(root, '.codex-plugin', 'plugin.json'),
+]
 
 const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
-const plugin = JSON.parse(readFileSync(pluginPath, 'utf8'))
+const plugins = pluginPaths.map((path) => ({ path, data: JSON.parse(readFileSync(path, 'utf8')) }))
 
 // Rewriting the parsed object would reorder or drop anything the file carries
 // that we do not model. Only the version line is replaced.
@@ -44,22 +47,23 @@ function writeVersion(path, raw, version) {
 
 if (requested) {
   writeVersion(pkgPath, readFileSync(pkgPath, 'utf8'), requested)
-  writeVersion(pluginPath, readFileSync(pluginPath, 'utf8'), requested)
-  console.log(`package.json and plugin.json → ${requested}`)
+  for (const { path } of plugins) writeVersion(path, readFileSync(path, 'utf8'), requested)
+  console.log(`package.json and ${plugins.length} plugin manifests → ${requested}`)
   process.exit(0)
 }
 
-if (plugin.version === pkg.version) {
-  console.log(`plugin.json already at ${pkg.version}`)
+const drift = plugins.filter(({ data }) => data.version !== pkg.version)
+if (!drift.length) {
+  console.log(`plugin manifests already at ${pkg.version}`)
   process.exit(0)
 }
 
 if (check) {
-  console.error(
-    `plugin.json is at ${plugin.version} but package.json is at ${pkg.version}. Run: node scripts/sync-plugin-version.mjs`,
-  )
+  for (const { path, data } of drift)
+    console.error(`${path} is at ${data.version} but package.json is at ${pkg.version}.`)
+  console.error('Run: node scripts/sync-plugin-version.mjs')
   process.exit(1)
 }
 
-writeVersion(pluginPath, readFileSync(pluginPath, 'utf8'), pkg.version)
-console.log(`plugin.json → ${pkg.version}`)
+for (const { path } of drift) writeVersion(path, readFileSync(path, 'utf8'), pkg.version)
+console.log(`${drift.length} plugin manifest(s) → ${pkg.version}`)

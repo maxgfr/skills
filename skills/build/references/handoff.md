@@ -13,7 +13,7 @@ BUILD: built — 3 steps done · 0 blocked · 0 skipped     mode: workflow
   S-003  Document the limit         done   grep -q "Rate limits" README.md            exit 0
 
 Worktree: .worktrees/build-rate-limiter   Record: .agents/build/20260901-101500/BUILD.md
-Next: /verify docs/plans/2026-09-01-rate-limiter.md
+Next: <host verify invocation> docs/plans/2026-09-01-rate-limiter.md
 ```
 
 ```
@@ -36,9 +36,9 @@ from the return value is printed only when it says more than the default line.
 
 | Status | Say | Then |
 |---|---|---|
-| `built` | the block, `Next: /verify <planPath>` | under `then verify`: run verify's Phase 0 with `planPath` and call its workflow, same turn. Otherwise stop. |
-| `blocked` | the block, the blocked step's notes, the skipped dependents | stop. The user decides: fix the plan, fix the step by hand, or `/build` again on the same plan — the worktree keeps what landed. |
-| `unproven` | the block, and **in these words**: an agent did not return, so those steps were never judged — this is not a verdict on the code | stop, and offer to re-run `/build` on the same plan. Do not describe an unproven step as failing, and do not read its code yourself to fill the gap: your reading is not the reviewer's run. |
+| `built` | the block, `Next: <host verify invocation> <planPath>` | under `then verify`: run verify's Phase 0 with `planPath` and call its workflow, same turn. Otherwise stop. |
+| `blocked` | the block, the blocked step's notes, the skipped dependents | stop. The user decides: fix the plan, fix the step by hand, or invoke `build` again on the same plan — the worktree keeps what landed. |
+| `unproven` | the block, and **in these words**: an agent did not return, so those steps were never judged — this is not a verdict on the code | stop, and offer to re-run `build` on the same plan. Do not describe an unproven step as failing, and do not read its code yourself to fill the gap: your reading is not the reviewer's run. |
 | `peer_unavailable` | the block, `peer_unavailable: <reason>` | stop. Do **not** build host-side. The user asked for the other agent; substituting yourself silently is the one thing this mode must not do. |
 
 `unproven` is the answer an outage produces — a quota, a timeout, a crashed
@@ -49,7 +49,7 @@ infrastructure failure. Re-running the build re-judges them; steps already
 pass and the reviewer says so.
 
 **Name the plan on the verify call.** `verify` ranks the host's own plan
-artifact above `docs/plans/`, so a bare `/verify` can pick up a plan-mode
+artifact above `docs/plans/`, so a bare `verify` can pick up a plan-mode
 scratch file from the same session — newer, and not what `blueprint` wrote.
 
 ## `then verify`
@@ -63,7 +63,7 @@ a plan, and the next thing they read is a verdict. Under `then verify`:
 2. Anything else → the build block, and stop. A verification of a blocked build
    proves what is already known.
 
-`/blueprint auto` is the same chain one step earlier: approval → `build … then
+`blueprint auto` is the same chain one step earlier: approval → `build … then
 verify`, with no prompt between them.
 
 ## After the handoff

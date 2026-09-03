@@ -15,9 +15,9 @@ finding gets one, and a blocking claim gets a panel. More finder lenses means
 more candidates means more skeptics, so the two multiply.
 
 **The presets live in `scripts/tiers.mjs`, not in this table.** Phase 0 runs
-`node scripts/tiers.mjs <name>` and merges the config files and flags on top;
-anything you set explicitly wins. The table below is a description of that
-script, and the script is what runs.
+`node scripts/resolve-config.mjs --cwd <repo> --host <host> -- <arguments>`;
+that engine loads the preset and deep-merges every file and flag in the order
+above. The table below describes its preset input; the resolver is what runs.
 
 | | `ultralight` | `light` (default) | `normal` | `deep` |
 |---|---|---|---|---|
@@ -36,8 +36,10 @@ run that finds nothing costs ~7 agents, and one that surfaces nine candidates
 costs ~16 even when all nine are refuted and the verdict is `PASS`. A `deep` run
 on a large diff is where this compounds into the tens.
 
+To pin the token-conscious default explicitly in shared configuration:
+
 ```json
-{ "tier": "normal" }
+{ "tier": "light" }
 ```
 
 ### `light` — the default
@@ -81,7 +83,7 @@ and both panel settings floor at 1.
 The presets are a starting point, not a straitjacket:
 
 ```
-/verify light --lanes gates,defects --lenses wiring,leftovers
+verify light --lanes gates,defects --lenses wiring,leftovers
 ```
 
 ## Defaults
@@ -124,8 +126,9 @@ off. `scripts/tiers.mjs` holds that invariant and a test enforces it.
 ```
 
 `panel` is how many skeptics an ordinary candidate faces; `panel_blocking`
-applies to blocking ones. A finding survives on a majority of the skeptics that
-returned, so an agent that died never counts as a vote to keep it.
+applies to blocking ones. A finding survives only when at least
+`ceil(requested panel / 2)` skeptics keep it. An agent that died cannot lower
+that threshold and accidentally preserve a claim.
 
 Both floor at 1. There is no setting that skips refutation altogether — law 2
 is not configurable, and a candidate nobody challenged is not a finding.
@@ -189,7 +192,7 @@ whatever the host provides. Nothing else changes.
 { "loop": { "enabled": false } }
 ```
 
-is `/verify report` as a permanent setting. `fix_severity` accepts `blocking` (default), `major` (fixes blocking and major), or `all`.
+is `verify report` as a permanent setting. `fix_severity` accepts `blocking` (default), `major` (fixes blocking and major), or `all`.
 
 `max_iterations` above 5 is usually a sign the change should be re-planned rather than re-fixed.
 
@@ -198,26 +201,26 @@ is `/verify report` as a permanent setting. `fix_severity` accepts `blocking` (d
 Flags win over every file.
 
 ```
-/verify                         # loop mode, light — gates, plan, 3-lens defect hunt
-/verify normal                  # + behaviour proof and panels on blockers
-/verify deep                    # every lens, red-green audit
-/verify ultralight              # gates only, no defect hunt
-/verify report                  # read-only
-/verify main                    # explicit fixed point
-/verify --behavior full         # add the red-green audit
-/verify --panel 3               # judges.panel_blocking
-/verify --finders sonnet        # one stage's model (models.finders)
-/verify --model fable           # pin EVERY stage, overriding the config files
-/verify --max-iterations 5
-/verify --skip lint,e2e
-/verify --lanes gates,defects   # only these
-/verify --lenses wiring,leftovers   # which defect finders run (the `finders` array)
+verify                         # loop mode, light — gates, plan, 3-lens defect hunt
+verify normal                  # + behaviour proof and panels on blockers
+verify deep                    # every lens, red-green audit
+verify ultralight              # gates only, no defect hunt
+verify report                  # read-only
+verify main                    # explicit fixed point
+verify --behavior full         # add the red-green audit
+verify --panel 3               # judges.panel_blocking
+verify --finders sonnet        # one stage's model (models.finders)
+verify --model fable           # pin EVERY stage, overriding the config files
+verify --max-iterations 5
+verify --skip lint,e2e
+verify --lanes gates,defects   # only these
+verify --lenses wiring,leftovers   # which defect finders run (the `finders` array)
 ```
 
 `--finders` sets a **model** (`models.finders`); `--lenses` sets **which lenses run** (the top-level `finders` array). Two different keys, deliberately different flags.
 
-**A tier name is resolved before a git ref.** `/verify light` is a tier, not the
-branch `light`. Pass an ambiguous ref explicitly — `/verify --ref light`.
+**A tier name is resolved before a git ref.** `verify light` is a tier, not the
+branch `light`. Pass an ambiguous ref explicitly with `--ref light`.
 
 ## What verify never does
 

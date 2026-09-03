@@ -28,14 +28,17 @@ Violating the letter of a law is violating its spirit.
 
 ## Invocations
 
+Syntax: Codex uses `$build`; the Claude plugin uses `/maxgfr:build`; a
+standalone Claude skill uses `/build`. The table shows the arguments.
+
 | | |
 |---|---|
-| `/build` | **Default.** The newest approved plan under `docs/plans/`. |
-| `/build <path>` | That plan. |
-| `/build peer` | The *other* CLI agent writes the code — Codex from Claude, Claude from Codex — in the worktree, one step at a time. Review and guard unchanged. |
-| `/build then verify` | After `built`, run `verify` on the same plan in the same turn. |
+| no arguments | **Default.** The newest approved plan under `docs/plans/`. |
+| `<path>` | That plan. |
+| `peer` | The *other* CLI agent writes the code — Codex from Claude, Claude from Codex — in the worktree, one step at a time. Review and guard unchanged. |
+| `then verify` | After `built`, run `verify` on the same plan in the same turn. |
 
-Modifiers combine: `/build docs/plans/x.md peer then verify`.
+Modifiers combine: `build docs/plans/x.md peer then verify`.
 
 ## Phase 0 — Pin it, then launch (deterministic, no questions)
 
@@ -53,8 +56,9 @@ recipe and the `args` block are in `references/phase0.md`. In short:
 3. **Run directory.** `date +%Y%m%d-%H%M%S` → `.agents/build/<timestamp>/`.
 4. **Baseline.** `git stash create` in the worktree; empty output means `HEAD`.
    The guard diffs against this to see only what the build produced.
-5. **Host — only for `peer`.** `host: "claude"` or `"codex"`, whichever you are
-   running inside. Never infer it from what is installed.
+5. **Host.** Pass `host: "claude"` or `"codex"` for handoffs; when using the
+   Claude plugin also pass `namespace: "maxgfr"`. Never infer the host from
+   what is installed. `peer` also uses it to select the other CLI.
 6. **Launch**, in this same turn, on the highest host tier available:
    - **Workflow** — `Workflow({ scriptPath: "workflows/build.mjs", args })`.
    - **Parallel subagents** — `references/fallbacks.md`, one wave per dispatch.
@@ -100,7 +104,7 @@ for hosts that dispatch by hand:
 table, not as prose. Then:
 
 ```
-built      → /verify <planPath>     (name the path — verify ranks the host's
+built      → invoke verify <planPath> (name the path — verify ranks the host's
                                      own plan artifact above docs/plans/)
 blocked    → the blocked step, its notes, the skipped dependents; stop.
 unproven   → an agent never returned, so those steps were never judged. Say

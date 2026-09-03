@@ -278,7 +278,18 @@ export async function main(argv) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main(process.argv.slice(2)).then((result) => {
+  const cliArgs = process.argv.slice(2)
+  if (cliArgs.includes('--help')) {
+    process.stdout.write('Usage: node peer-build.mjs --host claude|codex --cwd <worktree> --plan <path> --step S-xxx --out <dir> [--model <m>] [--timeout-ms N]\n\nExample: node peer-build.mjs --host codex --cwd . --plan docs/plans/x.md --step S-001 --out .agents/peer --timeout-ms 900000\n')
+    process.exit(0)
+  }
+  try {
+    parseArgs(cliArgs)
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`)
+    process.exit(1)
+  }
+  main(cliArgs).then((result) => {
     process.stdout.write(JSON.stringify(result, null, 2) + '\n')
   })
 }

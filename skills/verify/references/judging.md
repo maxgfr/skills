@@ -42,7 +42,10 @@ A skeptic may return `severity_adjustment` to downgrade (`blocking` → `major`)
 
 ## Deduplication
 
-Before judging, merge candidates that name the same `file:line ± 3` and the same root cause, keeping the clearest wording and the highest severity. Two lenses finding one bug is a signal of confidence, not two bugs — record `found_by: ["correctness", "wiring"]` and judge it once.
+Before judging, merge non-machine candidates that name the same `file:line ± 3`,
+keeping the first wording and the highest severity. Two lenses finding one bug
+is a signal of confidence, not two bugs — merge `found_by` and judge it once.
+Never merge machine truth: each failed command keeps its own executed evidence.
 
 This is the one place a barrier is justified in the pipeline: dedup needs every lane's candidates before expensive judging starts. Everything else flows.
 

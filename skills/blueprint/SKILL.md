@@ -10,7 +10,6 @@ agreed to, or it asserted something about the repository that is not true. This
 skill is built against both.
 
 All paths below are relative to this skill's directory.
-
 ## Three laws
 
 1. **No design while the frontier is open.** Every unsettled decision that could
@@ -25,13 +24,17 @@ Violating the letter of a law is violating its spirit.
 
 ## Invocations
 
+Syntax: Codex uses `$blueprint`; the Claude plugin uses `/maxgfr:blueprint`;
+a standalone Claude skill uses `/blueprint`. The table
+shows the arguments after that host-specific name.
+
 | | |
 |---|---|
-| `/blueprint` | **Default.** Orient → grill → ground → design → write → approve. |
-| `/blueprint grill` | The interview only. Stops at the locked constraints; designs nothing. |
-| `/blueprint crosscheck` | + one read-only consultation of the other CLI agent before approval. |
-| `/blueprint <path>` | Harden an existing plan instead of writing a new one. |
-| `/blueprint auto` | After approval, run `build` then `verify` on the plan — same turn, no prompt between. |
+| no arguments | **Default.** Orient → grill → ground → design → write → approve. |
+| `grill` | The interview only. Stops at the locked constraints; designs nothing. |
+| `crosscheck` | + one read-only consultation of the other CLI agent before approval. |
+| `<path>` | Harden an existing plan instead of writing a new one. |
+| `auto` | After approval, run `build` then `verify` on the plan — same turn, no prompt between. |
 
 ## Phase 1 — Orient and classify
 
@@ -53,7 +56,7 @@ scope, an interface, the data, the failure policy or the acceptance criterion.
 **"It seems obvious" is not a skip signal** — it is the feeling that precedes
 building the wrong thing.
 
-Under `/blueprint grill`, stop when the frontier empties: report the locked
+Under `blueprint grill`, stop when the frontier empties: report the locked
 constraints and go no further.
 
 ## Phase 3 — Ground
@@ -112,14 +115,14 @@ Then, on the yes, set `status: approved` in the file and hand off. Under
 the approval. Otherwise offer it:
 
 > The plan is at `docs/plans/<file>`, written to be executed by an agent that
-> was not in this conversation. `/build docs/plans/<file>` implements it in a
-> worktree and hands off to `/verify docs/plans/<file>`. Now, or `/clear` first?
+> was not in this conversation. Invoke `build` with that path to implement it
+> in a worktree, then invoke `verify` with the same path. Now, or clear first?
 
 Run the self-containment check in `references/artifact.md` **before** offering
 it. If a step still leans on something only this conversation knows, that is a
 gap in the plan, not a reason to keep the context. **Name the path** on both
 calls: `verify` ranks the host's own plan artifact above `docs/plans/`, so a
-bare `/verify` can pick up a plan-mode scratch file from the same session.
+bare `verify` can pick up a plan-mode scratch file from the same session.
 
 ## What this does not do
 

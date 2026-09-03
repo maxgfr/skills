@@ -127,7 +127,7 @@ test('no plan at all is a one-line refusal that names the fix', () => {
   try {
     const r = cli(dir)
     assert.equal(r.ok, false)
-    assert.match(r.error, /run \/blueprint first/)
+    assert.match(r.error, /invoke blueprint first/)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

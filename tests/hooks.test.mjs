@@ -14,7 +14,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 const root = resolve(here, '..')
 const STOP = join(root, 'hooks', 'stop-guard.mjs')
 const START = join(root, 'hooks', 'session-start.mjs')
-const ROUTER = join(root, 'skills', 'using-maxgfr', 'SKILL.md')
+const ROUTER = join(root, 'hooks', 'router.md')
 
 function git(cwd, ...args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' })
@@ -158,6 +158,53 @@ test('the environment opt-out and both config opt-outs are honoured', () => {
   }
 })
 
+test('the Codex user config opt-out is honoured only on the Codex path', () => {
+  const dir = repo()
+  const codexHome = mkdtempSync(join(tmpdir(), 'stop-guard-codex-'))
+  try {
+    touchSource(dir)
+    writeFileSync(join(codexHome, 'verify.json'), JSON.stringify({ stop_guard: false }))
+    assert.equal(stop(dir, {}, { PLUGIN_ROOT: root, CODEX_HOME: codexHome }).out, null)
+    assert.equal(
+      stop(dir, {}, { CLAUDE_PLUGIN_ROOT: root, CODEX_HOME: codexHome }).out?.decision,
+      'block',
+      'Claude must not consume the Codex user config merely because Codex is installed',
+    )
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+    rmSync(codexHome, { recursive: true, force: true })
+  }
+})
+
+test('stop guard config uses resolver precedence, including VERIFY_CONFIG', () => {
+  const dir = repo()
+  const codexHome = mkdtempSync(join(tmpdir(), 'stop-guard-codex-'))
+  const explicit = join(codexHome, 'explicit.json')
+  try {
+    touchSource(dir)
+    mkdirSync(join(dir, '.claude'), { recursive: true })
+    mkdirSync(join(dir, '.agents'), { recursive: true })
+    writeFileSync(join(dir, '.claude', 'verify.json'), JSON.stringify({ stop_guard: false }))
+    writeFileSync(join(dir, '.agents', 'verify.json'), JSON.stringify({ stop_guard: true }))
+    assert.equal(
+      stop(dir, {}, { PLUGIN_ROOT: root, CODEX_HOME: codexHome }).out?.decision,
+      'block',
+      'portable repo true must override legacy false',
+    )
+
+    writeFileSync(join(dir, '.agents', 'verify.json'), JSON.stringify({ tier: 'light' }))
+    writeFileSync(explicit, JSON.stringify({ stop_guard: false }))
+    assert.equal(
+      stop(dir, {}, { PLUGIN_ROOT: root, CODEX_HOME: codexHome, VERIFY_CONFIG: explicit }).out,
+      null,
+      'VERIFY_CONFIG was omitted from stop-guard resolution',
+    )
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+    rmSync(codexHome, { recursive: true, force: true })
+  }
+})
+
 test('outside a git repository the guard has nothing to say', () => {
   const dir = mkdtempSync(join(tmpdir(), 'stop-guard-nogit-'))
   try {
@@ -240,6 +287,23 @@ test('session-start picks the envelope by host, and --plain prints the file itse
   assert.ok('additionalContext' in bare)
   const plain = execFileSync(process.execPath, [START, '--plain'], { encoding: 'utf8' })
   assert.equal(plain, readFileSync(ROUTER, 'utf8'))
+})
+
+test('session-start and Stop recovery use the active host invocation syntax', () => {
+  const codexEnv = { ...process.env, PLUGIN_ROOT: root, CLAUDE_PLUGIN_ROOT: root }
+  const codex = JSON.parse(execFileSync(process.execPath, [START], { encoding: 'utf8', env: codexEnv }))
+  assert.match(codex.additionalContext, /\$blueprint.*\$build.*\$verify/s)
+  assert.doesNotMatch(codex.additionalContext, /Skill tool/)
+
+  const dir = repo()
+  try {
+    touchSource(dir)
+    const { out } = stop(dir, {}, { PLUGIN_ROOT: root, CLAUDE_PLUGIN_ROOT: root })
+    assert.match(out.reason, /\$verify/)
+    assert.doesNotMatch(out.reason, /\/maxgfr:verify/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 test('hooks.json names both hooks and every command it runs exists', () => {

@@ -3,7 +3,7 @@
 // first message, and again after /clear and after a compaction.
 //
 // A skill the model never thinks to look up is a skill that never fires. This
-// prints skills/using-maxgfr/SKILL.md as additional context, in whichever
+// prints the internal router as additional context, in whichever
 // envelope the running host reads. The plugin root is taken from this file's
 // own location, not from an environment variable, so it also works from a
 // plain checkout.
@@ -17,8 +17,9 @@
 import { readFileSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { formatInvocation, invocationOptions } from './invocation.mjs'
 
-export const ROUTER = 'skills/using-maxgfr/SKILL.md'
+export const ROUTER = 'hooks/router.md'
 
 export function pluginRoot() {
   return resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -28,11 +29,14 @@ export function routerText(root = pluginRoot()) {
   return readFileSync(join(root, ROUTER), 'utf8')
 }
 
-export function payload(text) {
+export function payload(text, env = process.env) {
+  const options = invocationOptions(env)
+  const calls = ['blueprint', 'build', 'verify'].map((skill) => formatInvocation(skill, [], options)).join(', ')
   return (
     '<EXTREMELY_IMPORTANT>\n' +
     'You have the maxgfr process skills: blueprint plans, build implements, verify proves.\n\n' +
-    "**Below is the full content of the 'using-maxgfr' router skill. Follow it; invoke the three skills it names with the Skill tool.**\n\n" +
+    `Use this host's exact invocation syntax: ${calls}.\n\n` +
+    '**Follow the internal router below.**\n\n' +
     text +
     '\n</EXTREMELY_IMPORTANT>'
   )
@@ -42,7 +46,8 @@ export function payload(text) {
 // and `hookSpecificOutput.additionalContext` and would inject twice, so the
 // branches are exclusive — this mirrors what superpowers learned the hard way.
 export function envelope(text, env = process.env) {
-  const context = payload(text)
+  const context = payload(text, env)
+  if (env.PLUGIN_ROOT) return { additionalContext: context }
   if (env.CURSOR_PLUGIN_ROOT) return { additional_context: context }
   if (env.CLAUDE_PLUGIN_ROOT && !env.COPILOT_CLI)
     return { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } }

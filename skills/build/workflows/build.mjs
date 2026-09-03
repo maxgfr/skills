@@ -6,7 +6,7 @@ export const meta = {
   phases: [
     { title: 'Steps', detail: 'implement each S-xxx in dependency waves, review it, run its Verify command' },
     { title: 'Guard', detail: 'forbidden-repairs on the diff after every step — a cheat stops the build' },
-    { title: 'Handoff', detail: 'the step table, and the /verify call that proves the whole' },
+    { title: 'Handoff', detail: 'the step table, and the host-correct verify call that proves the whole' },
   ],
 }
 
@@ -23,8 +23,10 @@ const waves = Array.isArray(A.waves) && A.waves.length ? A.waves : steps.map((s)
 const skillDir = A.skillDir || '.'
 const runDir = A.runDir || '.agents/build/run'
 const baseline = A.baseline || 'HEAD'
-const mode = A.mode === 'peer' ? 'peer' : 'workflow'
+const policy = A.policy || {}
+const mode = ['workflow', 'peer'].includes(policy.mode) ? policy.mode : A.mode === 'peer' ? 'peer' : 'workflow'
 const host = A.host || null
+const namespace = A.namespace || null
 const cfg = A.config || {}
 const models = cfg.models || {}
 const efforts = cfg.effort || {}
@@ -32,7 +34,22 @@ const peerTimeoutMs = (cfg.peer && cfg.peer.timeout_ms) || 900000
 // One retry with the reviewer's issues, then blocked. A step that two attempts
 // could not land is a step the plan under-specified, and a third try is a
 // third guess.
-const maxAttempts = (cfg.steps && cfg.steps.max_attempts) || 2
+const maxAttempts = policy.max_attempts || (cfg.steps && cfg.steps.max_attempts) || 2
+const acceptance = policy.acceptance || {
+  implementer_exit: 0,
+  reviewer_exit: 0,
+  reviewer_spec: true,
+  reviewer_quality: true,
+  guard_verdict: 'CLEAN',
+}
+
+function skillCall(name, trailing = '') {
+  const suffix = trailing ? ` ${trailing}` : ''
+  if (host === 'codex') return `$${name}${suffix}`
+  if (host === 'claude' && namespace) return `/${namespace}:${name}${suffix}`
+  if (host === 'claude') return `/${name}${suffix}`
+  return `invoke the ${name} skill${suffix}`
+}
 
 function mdl(stage) {
   const m = models[stage]
@@ -306,7 +323,7 @@ async function runStep(id) {
     // a step that landed by silencing its own proof.
     if (!guard)
       return unproven(rec, 'the guard never returned, so the diff was never scanned for silencing repairs.')
-    if (guard.verdict === 'FORBIDDEN') {
+    if (guard.verdict !== acceptance.guard_verdict) {
       await agent(revertBrief(guard), { model: mdl('implementer'), label: 'revert-forbidden', phase: 'Guard' })
       stoppedBy = `forbidden-repair: ${guard.violations.map((v) => `${v.rule} @ ${v.file}`).join(', ')}`
       rec.status = 'blocked'
@@ -319,8 +336,8 @@ async function runStep(id) {
     // quality. A reviewer that answered without an exit code proved nothing.
     const reviewExit = typeof rev.verify_exit_code === 'number' ? rev.verify_exit_code : null
     rec.exit_code = reviewExit !== null ? reviewExit : implExit
-    const proven = (mode === 'peer' || implExit === 0) && reviewExit === 0
-    const accepted = rev.spec_ok === true && rev.quality_ok === true
+    const proven = (mode === 'peer' || implExit === acceptance.implementer_exit) && reviewExit === acceptance.reviewer_exit
+    const accepted = rev.spec_ok === acceptance.reviewer_spec && rev.quality_ok === acceptance.reviewer_quality
     if (proven && accepted) {
       rec.status = 'done'
       rec.notes = null
@@ -410,7 +427,7 @@ const status = peerFailure
         : 'blocked'
 
 const residualRisk = [
-  'build proves each step by its own Verify command; the whole is proven by /verify, which has not run yet.',
+  `build proves each step by its own Verify command; the whole is proven by ${skillCall('verify')}, which has not run yet.`,
 ]
 if (mode === 'peer') residualRisk.push("the peer's own reports were not used as evidence — every step was re-run by the reviewer.")
 if (stoppedBy) residualRisk.push(`the build stopped: ${stoppedBy}`)
@@ -441,7 +458,7 @@ await agent(
 - NOT JUDGED: each step whose status is "unproven", with the reason verbatim. Say plainly that an agent did not return and the step was therefore never judged — do not describe these as failing.
 - STOPPED BY, if set.
 - RESIDUAL RISK: the list in the data.
-- NEXT: ${status === 'built' ? `run /verify ${planPath}` : status === 'unproven' ? 'run /build again on the same plan — the steps above were never judged' : 'the blocked steps above, then /build again on the same plan'}.
+- NEXT: ${status === 'built' ? `run ${skillCall('verify', planPath)}` : status === 'unproven' ? `run ${skillCall('build')} again on the same plan — the steps above were never judged` : `the blocked steps above, then ${skillCall('build')} again on the same plan`}.
 
 Report back only the path.
 
@@ -453,5 +470,5 @@ ${JSON.stringify(summary)}`,
 return {
   ...summary,
   run_dir: runDir,
-  next: status === 'built' ? `/verify ${planPath}` : null,
+  next: status === 'built' ? skillCall('verify', planPath) : null,
 }

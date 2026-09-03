@@ -1,0 +1,21 @@
+{
+  "selection": [
+    { "id": "blueprint-explicit-en", "skill": "blueprint", "language": "en", "explicit": true, "prompt": "plan this change" },
+    { "id": "blueprint-implicit-fr", "skill": "blueprint", "language": "fr", "explicit": false, "prompt": "planifie ça" },
+    { "id": "build-explicit-fr", "skill": "build", "language": "fr", "explicit": true, "prompt": "implémente le plan" },
+    { "id": "build-implicit-en", "skill": "build", "language": "en", "explicit": false, "prompt": "implement the plan" },
+    { "id": "verify-explicit-en", "skill": "verify", "language": "en", "explicit": true, "prompt": "check my work" },
+    { "id": "verify-implicit-fr", "skill": "verify", "language": "fr", "explicit": false, "prompt": "vérifie" }
+  ],
+  "counter_prompts": [
+    { "id": "yield-tdd", "prompt": "Use red-green-refactor to implement this", "expected": "tdd" },
+    { "id": "yield-debug", "prompt": "Debug this failing test", "expected": "diagnosing-bugs" },
+    { "id": "yield-review", "prompt": "Review this pull request", "expected": "code-review" },
+    { "id": "yield-brainstorm", "prompt": "Brainstorm ideas without writing an implementation plan", "expected": "brainstorming" }
+  ],
+  "refusals": [
+    { "id": "blueprint-open-frontier", "skill": "blueprint", "expected": "no design while the frontier is open" },
+    { "id": "build-no-plan", "skill": "build", "expected": "no plan, no build" },
+    { "id": "verify-no-command", "skill": "verify", "expected": "no verdict without an executed command" }
+  ]
+}

@@ -12,24 +12,29 @@
 // Stdout: nothing, or the block decision. Exit code is always 0.
 //
 // Opt out: MAXGFR_NO_STOP_GUARD=1, or `"stop_guard": false` in
-// ~/.claude/verify.json, <repo>/.agents/verify.json or <repo>/.claude/verify.json.
+// $CODEX_HOME/verify.json, ~/.claude/verify.json, <repo>/.agents/verify.json,
+// or the legacy <repo>/.claude/verify.json, according to the active host.
 
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { homedir, tmpdir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { formatInvocation, invocationOptions } from './invocation.mjs'
+import { resolveConfig } from '../skills/verify/scripts/resolve-config.mjs'
 
-export const REASON =
-  'Source files changed since the last verify run. Run /maxgfr:verify <plan> (or /verify) before finishing — or set MAXGFR_NO_STOP_GUARD=1 to skip this guard.'
+export function reasonFor(env = process.env) {
+  const call = formatInvocation('verify', ['<plan>'], invocationOptions(env))
+  return `Source files changed since the last verify run. Run ${call} before finishing — or set MAXGFR_NO_STOP_GUARD=1 to skip this guard.`
+}
 
-// Both documented shapes at once. Whichever the running version reads, the
-// other is ignored; a guard that emits only the wrong one is a guard that
-// silently never fires.
-export const STOP_BLOCK = {
-  decision: 'block',
-  reason: REASON,
-  hookSpecificOutput: { hookEventName: 'Stop', decision: 'block', reason: REASON },
+export function stopBlock(env = process.env) {
+  const reason = reasonFor(env)
+  return {
+    decision: 'block',
+    reason,
+    hookSpecificOutput: { hookEventName: 'Stop', decision: 'block', reason },
+  }
 }
 
 // Paths that are not source: a plan, a report, a note. Changing only these is
@@ -56,20 +61,13 @@ export function readStdin() {
 }
 
 function optedOutByConfig(repoRoot, env) {
-  const home = env.HOME || homedir()
-  const candidates = [
-    join(home, '.claude', 'verify.json'),
-    repoRoot && join(repoRoot, '.agents', 'verify.json'),
-    repoRoot && join(repoRoot, '.claude', 'verify.json'),
-  ].filter(Boolean)
-  for (const file of candidates) {
-    try {
-      if (JSON.parse(readFileSync(file, 'utf8')).stop_guard === false) return true
-    } catch {
-      /* absent or malformed — not an opt-out */
-    }
+  const host = invocationOptions(env).host
+  try {
+    return resolveConfig({ cwd: repoRoot, host, env }).config.stop_guard === false
+  } catch {
+    // A malformed config must not disable a safety guard.
+    return false
   }
-  return false
 }
 
 // Modified or new files, repo-relative, that count as source.
@@ -157,7 +155,7 @@ export function decide(input, env = process.env) {
   } catch {
     /* no state dir — block anyway; it will block again, which is the lesser evil */
   }
-  return STOP_BLOCK
+  return stopBlock(env)
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

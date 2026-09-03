@@ -10,6 +10,7 @@ const root = resolve(here, '..')
 const SCRIPT = join(root, 'scripts', 'sync-plugin-version.mjs')
 const PKG = join(root, 'package.json')
 const PLUGIN = join(root, '.claude-plugin', 'plugin.json')
+const CODEX_PLUGIN = join(root, '.codex-plugin', 'plugin.json')
 
 function run(args = []) {
   try {
@@ -24,11 +25,13 @@ function run(args = []) {
 function withRestoredManifests(fn) {
   const pkg = readFileSync(PKG, 'utf8')
   const plugin = readFileSync(PLUGIN, 'utf8')
+  const codexPlugin = readFileSync(CODEX_PLUGIN, 'utf8')
   try {
     fn()
   } finally {
     writeFileSync(PKG, pkg)
     writeFileSync(PLUGIN, plugin)
+    writeFileSync(CODEX_PLUGIN, codexPlugin)
   }
 }
 
@@ -43,6 +46,7 @@ test('--set writes the same version to both manifests', () => {
     assert.equal(r.exitCode, 0)
     assert.equal(JSON.parse(readFileSync(PKG, 'utf8')).version, '9.9.9')
     assert.equal(JSON.parse(readFileSync(PLUGIN, 'utf8')).version, '9.9.9')
+    assert.equal(JSON.parse(readFileSync(CODEX_PLUGIN, 'utf8')).version, '9.9.9')
   })
 })
 
@@ -50,6 +54,7 @@ test('--set accepts a prerelease and rejects anything that is not semver', () =>
   withRestoredManifests(() => {
     assert.equal(run(['--set', '2.0.0-beta.1']).exitCode, 0)
     assert.equal(JSON.parse(readFileSync(PLUGIN, 'utf8')).version, '2.0.0-beta.1')
+    assert.equal(JSON.parse(readFileSync(CODEX_PLUGIN, 'utf8')).version, '2.0.0-beta.1')
   })
   // semantic-release interpolates the version into this command. A missing or
   // malformed value must fail the release, not write "undefined" into the
@@ -63,11 +68,15 @@ test('--set accepts a prerelease and rejects anything that is not semver', () =>
 test('--set leaves the rest of the manifest untouched', () => {
   withRestoredManifests(() => {
     const before = JSON.parse(readFileSync(PLUGIN, 'utf8'))
+    const codexBefore = JSON.parse(readFileSync(CODEX_PLUGIN, 'utf8'))
     run(['--set', '3.1.4'])
     const after = JSON.parse(readFileSync(PLUGIN, 'utf8'))
     assert.deepEqual(Object.keys(after), Object.keys(before), 'key order and set must survive')
     assert.deepEqual(after.skills, before.skills)
     assert.equal(after.name, before.name)
+    const codexAfter = JSON.parse(readFileSync(CODEX_PLUGIN, 'utf8'))
+    assert.deepEqual(Object.keys(codexAfter), Object.keys(codexBefore), 'Codex manifest shape must survive')
+    assert.equal(codexAfter.skills, codexBefore.skills)
   })
 })
 

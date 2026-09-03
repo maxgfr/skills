@@ -1,0 +1,36 @@
+{
+  "name": "maxgfr",
+  "version": "1.3.3",
+  "description": "A three-stage engineering loop: blueprint plans, build implements, verify proves.",
+  "author": {
+    "name": "maxgfr",
+    "url": "https://github.com/maxgfr"
+  },
+  "homepage": "https://github.com/maxgfr/skills",
+  "repository": "https://github.com/maxgfr/skills",
+  "license": "MIT",
+  "keywords": [
+    "planning",
+    "implementation",
+    "verification",
+    "testing"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "maxgfr skills",
+    "shortDescription": "Plan, build, and verify repository changes",
+    "longDescription": "A grounded implementation loop with approved plans, isolated builds, deterministic guards, and evidence-backed verification.",
+    "developerName": "maxgfr",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/maxgfr/skills",
+    "defaultPrompt": [
+      "Plan this repository change before coding.",
+      "Implement the approved plan.",
+      "Verify that this change actually works."
+    ]
+  }
+}

@@ -88,6 +88,7 @@ function run(argsOverride, script, logs = []) {
     runDir: '/wt/.agents/build/20260101-000000',
     baseline: 'abc123',
     mode: 'workflow',
+    host: 'claude',
     ...argsOverride,
   }
   return compiled(args, makeAgent(script, calls), parallel, pipeline, () => {}, (m) => logs.push(String(m)), {
@@ -106,6 +107,18 @@ test('a clean build lands every step and hands off to verify on the plan path', 
   assert.equal(result.next, '/verify docs/plans/2026-01-01-thing.md')
   assert.equal(result.stopped_by, null)
   assert.ok(calls.includes('summary'))
+})
+
+test('the handoff uses the active host syntax', async () => {
+  assert.equal((await run({ host: 'codex' }, HAPPY)).result.next, '$verify docs/plans/2026-01-01-thing.md')
+  assert.equal(
+    (await run({ host: 'claude', namespace: 'maxgfr' }, HAPPY)).result.next,
+    '/maxgfr:verify docs/plans/2026-01-01-thing.md',
+  )
+  assert.equal(
+    (await run({ host: null }, HAPPY)).result.next,
+    'invoke the verify skill docs/plans/2026-01-01-thing.md',
+  )
 })
 
 test('nothing precedes the first implementer — no question, no summary, no confirmation', async () => {
@@ -146,6 +159,15 @@ test('a step whose Verify command fails is retried once, then blocked, and its d
   assert.ok(result.skipped.some((s) => s.id === 'S-003' && s.because === 'S-002'))
   assert.ok(!calls.includes('impl:S-003'), 'a dependent of a blocked step was implemented anyway')
   assert.equal(result.next, null)
+})
+
+test('workflow consumes the same serialized retry policy as the fallback adapter', async () => {
+  const { result, calls } = await run(
+    { policy: { max_attempts: 1 } },
+    { ...HAPPY, 'review:S-001': { ...REVIEW_OK, spec_ok: false, issues: [{ file: 'src/a.ts', line: 1, issue: 'missing', kind: 'spec' }] } },
+  )
+  assert.equal(result.steps[0].attempts, 1)
+  assert.ok(!calls.includes('impl:S-001:retry'))
 })
 
 test('a reviewer that rejects the spec blocks the step even when the implementer reported green', async () => {

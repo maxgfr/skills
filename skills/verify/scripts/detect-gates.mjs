@@ -36,6 +36,23 @@ const NAME_DENY = /(:fix|:write|--fix|watch|dev$|^dev|^start|^serve|^clean|:ui$|
 const BODY_DENY = /(--watch\b|--fix\b|--write\b|nodemon|vite dev|next dev)/
 
 const args = process.argv.slice(2)
+if (args.includes('--help')) {
+  process.stdout.write('Usage: node detect-gates.mjs [--cwd <dir>] [--pretty]\n\nExample: node detect-gates.mjs --cwd . --pretty\n')
+  process.exit(0)
+}
+for (let i = 0; i < args.length; i += 1) {
+  if (args[i] === '--pretty') continue
+  if (args[i] === '--cwd') {
+    if (!args[i + 1]) {
+      process.stderr.write('--cwd needs a value.\n')
+      process.exit(1)
+    }
+    i += 1
+    continue
+  }
+  process.stderr.write(`Unknown flag: ${args[i]}\n`)
+  process.exit(1)
+}
 const cwd = resolve(argFor('--cwd') ?? process.cwd())
 const pretty = args.includes('--pretty')
 

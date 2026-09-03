@@ -121,7 +121,7 @@ A test written alongside the fix and never seen to fail proves the code compiles
 
 ## Lane E — peer crosscheck
 
-**Off in every tier.** Runs only when the user asks (`/verify crosscheck`, which
+**Off in every tier.** Runs only when the user asks (`verify crosscheck`, which
 sets `lanes.peer`). It spends a second vendor's tokens, so it never switches
 itself on.
 

@@ -100,4 +100,4 @@ The final gate run is not optional and not incremental. Partial evidence is how 
 
 ## Report mode
 
-`/verify report` runs Phases 0–4 and stops. No baseline, no writes, nothing to revert. If you then say "fix", the loop runs **once** over the blockers — a single round with the same guard — and re-runs the impacted gates. It does not become the looping mode retroactively; ask for `/verify` if you want that.
+`verify report` runs Phases 0–4 and stops. No baseline, no writes, nothing to revert. If you then say "fix", the loop runs **once** over the blockers — a single round with the same guard — and re-runs the impacted gates. It does not become the looping mode retroactively; invoke `verify` without `report` if you want that.

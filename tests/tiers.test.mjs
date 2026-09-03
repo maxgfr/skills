@@ -13,6 +13,7 @@ test('the default tier actually verifies the change', () => {
   // answers "do the commands pass", not "is this change any good" — which is
   // the question /verify is asked. It must read the diff and check the promise.
   const d = resolveTier(DEFAULT_TIER)
+  assert.equal(DEFAULT_TIER, 'light', 'the token-conscious default must stay light')
   assert.equal(d.lanes.defects, true, 'the default must hunt for defects')
   assert.equal(d.lanes.spec, true, 'the default must check the change against its promise')
   assert.ok(d.finders.length >= 2, 'one lens is not a defect hunt')

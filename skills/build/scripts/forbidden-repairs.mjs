@@ -27,6 +27,23 @@ import { execFileSync } from 'node:child_process'
 import { relative, resolve, sep } from 'node:path'
 
 const args = process.argv.slice(2)
+if (args.includes('--help')) {
+  process.stdout.write('Usage: node forbidden-repairs.mjs [--since REF | --patch FILE] [--plan FILE] [--allow RULE] [--include-untracked] [--pretty]\n\nExample: node forbidden-repairs.mjs --since HEAD --include-untracked --pretty\n')
+  process.exit(0)
+}
+for (let i = 0; i < args.length; i += 1) {
+  if (['--include-untracked', '--pretty'].includes(args[i])) continue
+  if (['--since', '--patch', '--plan', '--allow'].includes(args[i])) {
+    if (!args[i + 1]) {
+      process.stderr.write(`${args[i]} needs a value.\n`)
+      process.exit(1)
+    }
+    i += 1
+    continue
+  }
+  process.stderr.write(`Unknown flag: ${args[i]}\n`)
+  process.exit(1)
+}
 const pretty = args.includes('--pretty')
 const planPath = argFor('--plan')
 const allowed = new Set(argsFor('--allow'))

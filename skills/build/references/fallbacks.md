@@ -13,8 +13,12 @@ never enter the session.
 
 ## Tier 2 — Parallel subagents (including Codex)
 
-No Workflow tool, but a native subagent tool. Same loop, dispatched by hand,
-with the briefs in `briefs.md` pasted verbatim:
+No Workflow tool, but a native subagent tool. First run
+`node scripts/fallback-plan.mjs --cwd <repo> --plan <planPath> --host <host>
+[--namespace maxgfr] [--mode workflow|peer] [--max-attempts N]
+[--run-dir <runDir>] --pretty`.
+Execute its JSON in order; do not recompute the waves or its `policy`. The
+briefs in `briefs.md` remain the content of each dispatch:
 
 1. **One wave per dispatch.** Send every implementer of the wave in one message
    so they run concurrently. In `peer` mode, send them one at a time: one
@@ -23,9 +27,9 @@ with the briefs in `briefs.md` pasted verbatim:
 3. **Then the guard** — run `scripts/forbidden-repairs.mjs --since <baseline>
    --plan <planPath>` yourself via Bash; it is a plain Node script. `FORBIDDEN`
    → dispatch the revert brief, record `stopped_by`, and stop.
-4. **Decide** each step with the rule at the end of `briefs.md`. A step not
-   accepted gets one retry with the reviewer's issues, then `blocked`. Mark its
-   dependents `skipped` before the next wave.
+4. **Decide** each step with `policy.acceptance`. A step not accepted gets up
+   to `policy.max_attempts`; then mark it `blocked`. Apply
+   `policy.on_dependency_not_done` before the next wave.
 5. **Next wave.** A wave whose every step is skipped costs nothing.
 6. **Record.** Write `<runDir>/BUILD.md` yourself.
 

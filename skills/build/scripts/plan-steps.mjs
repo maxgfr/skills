@@ -200,7 +200,7 @@ export function schedule(cwd, given) {
       ok: false,
       error: given
         ? `No plan at ${given}.`
-        : `No approved plan under ${PLAN_DIR}/ — run /blueprint first, or name the plan: /build <path>.`,
+        : `No approved plan under ${PLAN_DIR}/ — invoke blueprint first, or invoke build with a plan path.`,
     }
   const plan = parsePlan(readFileSync(planPath, 'utf8'))
   const rel = relative(cwd, planPath) || planPath
@@ -233,6 +233,23 @@ export function schedule(cwd, given) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2)
+  if (args.includes('--help')) {
+    process.stdout.write('Usage: node plan-steps.mjs [--cwd <repo>] [--plan <path>] [--pretty]\n\nExample: node plan-steps.mjs --cwd . --pretty\n')
+    process.exit(0)
+  }
+  for (let i = 0; i < args.length; i += 1) {
+    if (args[i] === '--pretty') continue
+    if (args[i] === '--cwd' || args[i] === '--plan') {
+      if (!args[i + 1]) {
+        process.stderr.write(`${args[i]} needs a value.\n`)
+        process.exit(1)
+      }
+      i += 1
+      continue
+    }
+    process.stderr.write(`Unknown flag: ${args[i]}\n`)
+    process.exit(1)
+  }
   const argFor = (flag) => {
     const i = args.indexOf(flag)
     return i >= 0 && args[i + 1] ? args[i + 1] : null

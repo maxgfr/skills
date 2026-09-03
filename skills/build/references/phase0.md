@@ -17,8 +17,8 @@ node <skill dir>/scripts/plan-steps.mjs --cwd <repo> [--plan <path>] --pretty
   The four refusals: no plan, not approved, a step without `Verify:`, a
   dependency cycle or an unknown dependency.
 
-`peer` and `then verify` are modifiers, not paths. `/build peer` is the default
-plan with `mode: "peer"`; `/build docs/plans/x.md peer` is that plan with it.
+`peer` and `then verify` are modifiers, not paths. `build peer` is the default
+plan with `mode: "peer"`; `build docs/plans/x.md peer` is that plan with it.
 
 ## 2. The worktree
 
@@ -44,12 +44,15 @@ The baseline is what the guard diffs against, so it must be taken **after** the
 worktree exists and **before** the first implementer runs. It touches no ref
 and no file.
 
-## 4. The host (peer mode only)
+## 4. The host
 
-`host` is the CLI you are executing inside — `claude` or `codex`. The peer is
-the other one. This is passed, never sniffed: `command -v codex` says what is
-installed, not who is running. If you cannot tell, leave it unset; the workflow
-reports `peer_unavailable` with that reason, which is the honest outcome.
+`host` is the CLI you are executing inside — `claude` or `codex` — and is
+required in every mode so the handoff uses valid syntax. Under the Claude
+plugin, also pass `namespace: "maxgfr"`; omit it for standalone Claude. In
+`peer` mode the peer is the other CLI. Pass these values; never sniff them:
+`command -v codex` says what is installed, not who is running. If the host is
+genuinely unresolved, the workflow emits a neutral handoff instead of guessing;
+in `peer` mode it reports `peer_unavailable`.
 
 ## 5. The launch — same turn
 
@@ -65,13 +68,15 @@ Workflow({
     runDir,       // <worktree>/.agents/build/<timestamp>
     baseline,     // the stash SHA, or HEAD
     mode,         // "workflow" | "peer"
-    host,         // "claude" | "codex" — peer mode only
-    config        // optional: models, effort, steps.max_attempts, peer.timeout_ms
+    host,         // "claude" | "codex" — peer selection and handoff syntax
+    namespace,    // "maxgfr" for the Claude plugin; otherwise omit
+    config,       // optional: models, effort, steps.max_attempts, peer.timeout_ms
+    policy        // orchestration-policy.mjs JSON, verbatim
   }
 })
 ```
 
-Invoking `/build` is the explicit opt-in the Workflow tool requires. If the
+Invoking `build` is the explicit opt-in the Workflow tool requires. If the
 workflow fails mid-run it returns a `runId`; resume with
 `Workflow({ scriptPath, resumeFromRunId })` and only the failed step onward runs
 live.
@@ -92,6 +97,17 @@ Every stage inherits the session's model by default. Read
 `$CODEX_HOME/build.json`, if they exist; flags override both. Pinning the
 reviewer *down* is the false economy: a reviewer that accepts a broken step
 costs a `verify` run and a rebuild.
+
+Serialize the execution laws after resolving that config:
+
+```bash
+node <skill dir>/scripts/orchestration-policy.mjs --mode <workflow|peer> \
+  --max-attempts <config.steps.max_attempts-or-2> --pretty
+```
+
+Pass its JSON output verbatim as `policy`. The Workflow and native-subagent
+fallback both consume this object; never restate its retry, dependency, or
+acceptance rules in host-specific prose.
 
 ## What this phase must never do
 

@@ -1,6 +1,6 @@
 # Peer mode — the other agent writes the code
 
-`/build peer` hands each step to the *other* CLI agent: Codex when you are in
+`build peer` hands each step to the *other* CLI agent: Codex when you are in
 Claude Code, Claude when you are in Codex. You still manage the build — the
 waves, the reviewer, the guard, the record — and the peer does the typing. It is
 the same symmetry as `crosscheck`, with the one difference that matters: the
@@ -54,7 +54,7 @@ gets a second attempt because the reviewer's issues can be written into its
 brief; the peer's prompt is built by `peer-build.mjs` from the plan step alone,
 so there is no channel to tell it what was wrong. Re-running would re-send the
 identical prompt for the identical rejection, and pay for a second full peer
-session to get it. The issues stay in the record; `/build` again once the plan
+session to get it. The issues stay in the record; invoke `build` again once the plan
 or the code is fixed.
 
 ## When the peer is not there
@@ -63,7 +63,7 @@ Not installed, not authenticated, timed out, crashed, or the host could not
 say which CLI it is running inside: `peer_unavailable`, with the reason, and
 the build stops. **The host does not take over.** The user asked for the other
 agent; a build that quietly reverts to the host is a build that lied about who
-wrote it. Run `/build` again without `peer` if that is what you want.
+wrote it. Invoke `build` again without `peer` if that is what you want.
 
 A timed-out peer may have left files behind. They are listed in
 `files_touched` and stay in the worktree; the handoff says so, and reverting

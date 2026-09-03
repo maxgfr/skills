@@ -8,7 +8,7 @@
 // Usage: node scripts/validate-skills.mjs [--quiet]
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs'
-import { join, dirname, basename, relative, resolve } from 'node:path'
+import { join, dirname, basename, relative, resolve, sep } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
@@ -228,43 +228,85 @@ ${src.replace(/^export\s+const\s+meta\s*=/m, 'const meta =')}
 
   // --------------------------------------------------- plugin manifest sync
 
-  const pluginPath = join(rootDir, '.claude-plugin', 'plugin.json')
-  let plugin = null
-  if (existsSync(pluginPath)) {
+  const readJson = (path) => {
     try {
-      plugin = JSON.parse(readFileSync(pluginPath, 'utf8'))
+      return JSON.parse(readFileSync(path, 'utf8'))
     } catch (err) {
-      fail(pluginPath, `is not valid JSON: ${err.message}`)
+      fail(path, `is not valid JSON: ${err.message}`)
+      return null
     }
-    if (plugin) {
-      const declared = new Set((plugin.skills || []).map((p) => p.replace(/^\.\//, '')))
-      const actual = new Set(skillDirs.map((d) => relative(rootDir, d)))
-      for (const d of declared)
-        if (!actual.has(d)) fail(pluginPath, `declares "${d}", which is not a skill directory.`)
-      for (const d of actual)
-        if (!declared.has(d)) fail(pluginPath, `does not declare the skill at "${d}".`)
+  }
+  const actual = new Set(skillDirs.map((d) => relative(rootDir, d).split(sep).join('/')))
+  const pluginSpecs = [
+    { host: 'Claude', path: join(rootDir, '.claude-plugin', 'plugin.json') },
+    { host: 'Codex', path: join(rootDir, '.codex-plugin', 'plugin.json') },
+  ]
+  const present = pluginSpecs.filter(({ path }) => existsSync(path))
+  if (present.length && present.length !== pluginSpecs.length) {
+    for (const { host, path } of pluginSpecs)
+      if (!existsSync(path)) fail(path, `${host} plugin manifest is missing while another host manifest is present.`)
+  }
+
+  const manifests = new Map()
+  for (const { host, path } of present) {
+    const plugin = readJson(path)
+    if (!plugin) continue
+    manifests.set(host, plugin)
+    if (!plugin.name) fail(path, 'is missing "name".')
+    if (!plugin.version) fail(path, 'is missing "version".')
+
+    let declared
+    if (Array.isArray(plugin.skills))
+      declared = new Set(plugin.skills.map((p) => p.replace(/^\.\//, '').replace(/\/$/, '')))
+    else if (typeof plugin.skills === 'string' && plugin.skills.replace(/^\.\//, '').replace(/\/$/, '') === 'skills')
+      declared = new Set(actual)
+    else {
+      declared = new Set()
+      fail(path, 'must declare skills as an array or "./skills/".')
+    }
+    for (const d of declared) if (!actual.has(d)) fail(path, `declares "${d}", which is not a skill directory.`)
+    for (const d of actual) if (!declared.has(d)) fail(path, `does not declare the skill at "${d}".`)
+
+    if (plugin.hooks) {
+      const hooks = resolve(rootDir, plugin.hooks)
+      if (!existsSync(hooks)) fail(path, `points at a hooks file that does not exist: ${plugin.hooks}`)
     }
   }
 
-  const marketplacePath = join(rootDir, '.claude-plugin', 'marketplace.json')
-  if (existsSync(marketplacePath)) {
-    let marketplace = null
-    try {
-      marketplace = JSON.parse(readFileSync(marketplacePath, 'utf8'))
-    } catch (err) {
-      fail(marketplacePath, `is not valid JSON: ${err.message}`)
+  const pkgPath = join(rootDir, 'package.json')
+  const pkg = existsSync(pkgPath) ? readJson(pkgPath) : null
+  if (pkg)
+    for (const { host, path } of present) {
+      const plugin = manifests.get(host)
+      if (plugin && plugin.version !== pkg.version)
+        fail(path, `is at ${plugin.version} but package.json is at ${pkg.version}.`)
     }
-    // The plugin's name is the namespace its skills are invoked under
-    // (`<plugin>:<skill>`). A marketplace advertising a different name installs
-    // nothing, and the failure surfaces only when a user tries it.
-    if (marketplace && plugin) {
-      const advertised = (marketplace.plugins || []).map((p) => p.name)
-      if (!advertised.includes(plugin.name)) {
-        fail(
-          marketplacePath,
-          `advertises ${JSON.stringify(advertised)} but plugin.json is named "${plugin.name}".`,
-        )
+
+  const marketplaceSpecs = [
+    { host: 'Claude', path: join(rootDir, '.claude-plugin', 'marketplace.json') },
+    { host: 'Codex', path: join(rootDir, '.agents', 'plugins', 'marketplace.json') },
+  ]
+  for (const { host, path } of marketplaceSpecs) {
+    if (!existsSync(path)) continue
+    const marketplace = readJson(path)
+    const plugin = manifests.get(host)
+    if (!marketplace || !plugin) continue
+    const entry = (marketplace.plugins || []).find((p) => p.name === plugin.name)
+    if (!entry) {
+      fail(path, `does not advertise plugin "${plugin.name}".`)
+      continue
+    }
+    if (host === 'Codex') {
+      const sourcePath = typeof entry.source === 'string' ? entry.source : entry.source?.path
+      if (!sourcePath || !sourcePath.startsWith('./')) fail(path, 'Codex plugin source.path must start with "./".')
+      else {
+        const target = resolve(rootDir, sourcePath)
+        if (target !== rootDir && !target.startsWith(rootDir + sep)) fail(path, 'Codex plugin source.path leaves the marketplace root.')
+        if (!existsSync(join(target, '.codex-plugin', 'plugin.json')))
+          fail(path, `Codex plugin source.path does not point at a plugin: ${sourcePath}`)
       }
+      if (!entry.policy?.installation || !entry.policy?.authentication || !entry.category)
+        fail(path, 'Codex marketplace entry needs installation, authentication, and category policy.')
     }
   }
 

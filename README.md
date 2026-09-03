@@ -8,24 +8,40 @@ The set grows. Today it is one loop, closed: an agent plans against a repo it ha
 
 ## Install
 
-**Any agent** — copies editable files into your repo:
+**Codex plugin** — managed install with hooks and updates:
+
+```bash
+codex plugin marketplace add maxgfr/skills
+codex plugin add maxgfr@maxgfr-skills
+```
+
+**Claude Code plugin** — the same managed plugin:
+
+```text
+/plugin marketplace add maxgfr/skills
+/plugin install maxgfr
+```
+
+**Standalone skills** — copies editable skill files into the host's skills
+directory, without plugin hooks:
 
 ```bash
 npx skills add maxgfr/skills
 ```
 
-**Claude Code** — as a managed plugin that updates when I ship:
+Pick one installation path per host. The skill names are host syntax, not a
+setting:
 
-```
-/plugin marketplace add maxgfr/skills
-/plugin install maxgfr
-```
+| Host | Example |
+|---|---|
+| Codex | `$verify docs/plans/x.md` |
+| Claude plugin | `/maxgfr:verify docs/plans/x.md` |
+| Standalone Claude skill | `/verify docs/plans/x.md` |
 
-Pick one. Installing both leaves you with every skill twice.
-
-The two paths name the skills differently, and that is the plugin's doing rather than a setting: a plugin namespaces what it ships, so `verify` is invoked as **`/maxgfr:verify`**. The `npx` path copies the files into `.claude/skills/`, where the same skill is plain **`/verify`**. Both run the identical skill; only the name you type changes.
-
-They differ in one more way: **the plugin ships the hooks** that make the skills fire on their own (see [automatic](#automatic)). The `npx` path copies skills only. To get the same effect there, add the router to your instructions file — `node hooks/session-start.mjs --plain >> AGENTS.md` from a checkout — and, if you want the stop guard, wire `hooks/stop-guard.mjs` as a `Stop` hook in your settings.
+Managed plugins ship the hooks that make the skills fire automatically (see
+[automatic](#automatic)). The standalone path copies skills only. From a
+checkout, `node hooks/session-start.mjs --plain` prints the internal router for
+an instructions file; `hooks/stop-guard.mjs` can be wired as a `Stop` hook.
 
 [skills.sh](https://skills.sh) builds its directory from recorded installs, so the listing for this repo appears on its own once there are some. Neither command depends on it — `npx skills add` reads the repository directly.
 
@@ -43,19 +59,20 @@ npx skills add maxgfr/skills --skill verify  # take one — each is self-contain
 | [`blueprint`](./skills/blueprint) | Interrogates you, grounds the design in the repo, and writes the plan the other two hold the work to. |
 | [`build`](./skills/build) | Executes an approved plan step by step in a worktree — one implementer per step, a reviewer and a cheat guard on each — and hands off to `verify`. Can delegate the coding to the other CLI agent. |
 | [`verify`](./skills/verify) | Proves that work just produced actually works, then fixes the blockers. |
-| [`using-maxgfr`](./skills/using-maxgfr) | The router the session-start hook injects: when each of the three fires, and what it yields to other skills. |
 
 One loop. `blueprint` writes the promise to `docs/plans/<date>-<slug>.md`;
 `build` reads that file as its schedule; `verify` reads it as the promise it
 checks the diff against. Three skills, one file, nothing to configure.
 
-```
-/blueprint                 # grill → ground → write the plan → approve
-/build docs/plans/…        # worktree → one agent per step → review → guard → step table
-/verify docs/plans/…       # gates, conformance, defect hunt → fix the blockers
+```text
+$blueprint                 # grill → ground → write the plan → approve
+$build docs/plans/…        # worktree → one agent per step → review → guard → step table
+$verify docs/plans/…       # gates, conformance, defect hunt → fix the blockers
 
-/blueprint auto            # all three from one call: approve, then build, then verify
+$blueprint auto            # all three from one call: approve, then build, then verify
 ```
+
+Examples below use Codex syntax; use the table above on Claude.
 
 `build` and `verify` are **fire-and-forget**: one invocation, a deterministic
 Phase 0, and the Workflow launches in the same turn. No clarifying question, no
@@ -63,7 +80,7 @@ summary, no "shall I proceed" — the approval was the plan file. The only refus
 is a missing or unapproved plan, in one line.
 
 **Name the plan on the `verify` call.** It ranks your host's own plan-mode
-artifact above `docs/plans/`, so a bare `/verify` can pick up a scratch file
+artifact above `docs/plans/`, so a bare `verify` can pick up a scratch file
 from the same session — newer, and not what `blueprint` wrote.
 
 Both ends can be **crosschecked**: one read-only consultation of the *other* CLI
@@ -76,11 +93,11 @@ further and lets that other agent write the code.
 
 ### blueprint
 
-```
-/blueprint              # the full pass
-/blueprint grill        # the interview only — no design, no artifact
-/blueprint crosscheck   # + the other agent challenges the plan before you approve it
-/blueprint <path>       # harden a plan that already exists
+```text
+$blueprint              # the full pass
+$blueprint grill        # the interview only — no design, no artifact
+$blueprint crosscheck   # + the other agent challenges the plan before you approve it
+$blueprint <path>       # harden a plan that already exists
 ```
 
 Plans fail in two ways: they answer a question you never agreed to, or they
@@ -108,11 +125,11 @@ the artifact owes its task blocks to superpowers' `writing-plans`.
 
 ### build
 
-```
-/build                  # the newest approved plan under docs/plans/
-/build <path>           # that plan
-/build peer             # the other CLI agent writes the code, one step at a time
-/build then verify      # after `built`, run verify on the same plan, same turn
+```text
+$build                  # the newest approved plan under docs/plans/
+$build <path>           # that plan
+$build peer             # the other CLI agent writes the code, one step at a time
+$build then verify      # after `built`, run verify on the same plan, same turn
 ```
 
 A plan is a promise; a build is the promise kept one step at a time, with the
@@ -143,7 +160,7 @@ Per step, three agents:
 A step is `done` only when all three agree. Otherwise one retry with the
 reviewer's issues, then `blocked`, and its dependents are `skipped` by name,
 never attempted. What comes back is the step table, the worktree, a record in
-`.agents/build/<timestamp>/BUILD.md`, and the `/verify <plan>` call that proves
+`.agents/build/<timestamp>/BUILD.md`, and the host-correct `verify <plan>` call that proves
 the whole.
 
 **`peer` mode** replaces the implementer with the other CLI agent, running in
@@ -161,14 +178,14 @@ branch, commit, or ask. Full documentation: [`skills/build/`](./skills/build).
 
 ### verify
 
-```
-/verify              # gates + plan + defect hunt → fix the blockers → re-verify
-/verify normal       # + behaviour proof, panels of three on blockers
-/verify deep         # every lens, panels throughout, red-green audit
-/verify ultralight   # gates only — no defect hunt, no plan check
-/verify report       # read-only verdict, no writes
-/verify crosscheck   # + lane E — a second opinion from the other CLI agent
-/verify main         # explicit fixed point
+```text
+$verify              # gates + plan + defect hunt → fix the blockers → re-verify
+$verify normal       # + behaviour proof, panels of three on blockers
+$verify deep         # every lens, panels throughout, red-green audit
+$verify ultralight   # gates only — no defect hunt, no plan check
+$verify report       # read-only verdict, no writes
+$verify crosscheck   # + lane E — a second opinion from the other CLI agent
+$verify main         # explicit fixed point
 ```
 
 A run costs agents, and most of them are skeptics — one per candidate finding,
@@ -209,7 +226,7 @@ Three laws hold the whole thing up:
 2. **No finding without a refutation attempt.**
 3. **No repair that only silences the checker.** The fix loop may not skip a test, add `@ts-ignore`, widen to `any`, swallow an error, edit CI, or rewrite the plan to match the code. This is enforced by [a script](./skills/verify/scripts/forbidden-repairs.mjs) that scans the diff the loop just produced — not by asking the model nicely. If the only path to green is a suppression, the loop stops and says so.
 
-Output is a compact verdict — `PASS`, `FAIL`, or `UNPROVEN` when nothing broke because nothing was actually checked — an evidence table, ranked findings with concrete failure scenarios, and an explicit list of what could **not** be verified, including any lane that errored. Full detail goes to `.claude/verify/<timestamp>/`.
+Output is a compact verdict — `PASS`, `FAIL`, or `UNPROVEN` when nothing broke because nothing was actually checked — an evidence table, ranked findings with concrete failure scenarios, and an explicit list of what could **not** be verified, including any lane that errored. Full detail goes to `.agents/verify/<timestamp>/`.
 
 Every stage's model is configurable, and by default every stage is the same one:
 whatever your session is running. Pinning is opt-in. The pin worth knowing is the
@@ -220,14 +237,16 @@ finding costs a fix round, a re-verification and your attention.
 
 ```json
 {
-  "tier":   "normal",
+  "tier":   "light",
   "models": { "planner": "fable", "reporter": "fable" },
   "lanes":  { "behavior": "full" },
   "loop":   { "max_iterations": 3, "fix_severity": "blocking" }
 }
 ```
 
-Drop that in `.claude/verify.json` (this repo) or `~/.claude/verify.json` (everywhere). Full reference: [`references/config.md`](./skills/verify/references/config.md).
+Drop that in `.agents/verify.json` for the repo, `$CODEX_HOME/verify.json` for
+Codex, or `~/.claude/verify.json` for Claude. Full reference:
+[`references/config.md`](./skills/verify/references/config.md).
 
 Full documentation lives with the skill: [`skills/verify/`](./skills/verify).
 
@@ -237,9 +256,9 @@ Full documentation lives with the skill: [`skills/verify/`](./skills/verify).
 
 Not a skill — an option on both of them.
 
-```
-/blueprint crosscheck   # the other agent challenges the plan before you approve it
-/verify crosscheck      # the other agent gets a second look at the diff
+```text
+$blueprint crosscheck   # the other agent challenges the plan before you approve it
+$verify crosscheck      # the other agent gets a second look at the diff
 ```
 
 Every other lens either skill offers is the same model looking at the same work
@@ -279,20 +298,19 @@ A skill the model never thinks to look up is a skill that never fires. The
 plugin ships two hooks, in [`hooks/hooks.json`](./hooks/hooks.json), so that it
 does not have to think of it:
 
-**Session start** (`startup`, `/clear`, and after a compaction) injects
-[`using-maxgfr`](./skills/using-maxgfr/SKILL.md) — a sixty-line router that
-says when each of the three skills fires, in the words you would type (English
-and French), that `build` and `verify` are launched rather than discussed, and
-that TDD, debugging, review and brainstorming belong to whichever *other* skill
-you have installed for them. It names only these three, so it sits beside
-superpowers or Matt Pocock's set without arguing with either.
+**Session start** (`startup`, clear, and after a compaction) injects an
+[internal router](./hooks/router.md). It says when each public skill fires in
+English and French, renders the active host's invocation syntax, and yields to
+more specific TDD, debugging, review and brainstorming skills. It is context,
+not a fourth user-facing skill.
 
 **Stop** runs [`stop-guard.mjs`](./hooks/stop-guard.mjs): two git commands, a
 few stats, no model. If a source file was modified or added and no verify
 report is newer than it, the turn is blocked — **once per session** — with the
 reason. Plans, reports, notes and prose never trigger it; a run of `verify`
 clears it. Switch it off with `MAXGFR_NO_STOP_GUARD=1`, or `"stop_guard":
-false` in `~/.claude/verify.json` or the repo's `.agents/verify.json`.
+false` in `$CODEX_HOME/verify.json`, `~/.claude/verify.json`, or the repo's
+`.agents/verify.json`.
 
 Both scripts are dependency-free, always exit 0, finish well inside the hook
 budget, and are tested as processes against throwaway repositories. The
@@ -315,9 +333,14 @@ The engines ship with the skills and run on their own:
 ```bash
 node skills/verify/scripts/detect-gates.mjs --cwd . --pretty   # what "green" means here
 git diff | node skills/verify/scripts/forbidden-repairs.mjs    # did that fix cheat?
+node skills/verify/scripts/resolve-config.mjs --cwd . --host codex -- deep
 node skills/build/scripts/plan-steps.mjs --cwd . --pretty      # which plan, which waves
+node skills/build/scripts/orchestration-policy.mjs --pretty   # shared retry/acceptance laws
+node skills/build/scripts/fallback-plan.mjs --cwd . --host codex
+node skills/verify/scripts/fallback-plan.mjs --cwd . --host codex -- deep
 node skills/blueprint/scripts/peer-run.mjs --host claude …     # ask the other agent
 node skills/build/scripts/peer-build.mjs --host claude …       # let it write one step
+node scripts/doctor.mjs --host codex                            # installation diagnosis
 ```
 
 All of them are deterministic, dependency-free, and covered by tests. They work outside the skill too — `forbidden-repairs.mjs` on a PR diff is a reasonable CI step on its own.
@@ -343,16 +366,21 @@ The current catalogue of separately published skills lives on my [GitHub profile
 npm ci
 npm run validate   # frontmatter, naming, line budget, dead references, manifests, hooks, script syntax
 npm test           # the engines, both workflows and both hooks, against fixtures
+npm run test:e2e:hosts  # both hosts: discovery, routing matrix, refusals, full chain fixture
 npm run check      # everything, as CI runs it
 ```
 
-To see the hooks fire for real: `claude --plugin-dir .` from a checkout, and the
-router appears in the first message's context.
+The default host test is authentication-free and CI-safe. It covers explicit
+and implicit English/French routing, nearby counter-prompts, one refusal per
+skill, and a three-skill fixture whose source, refs, worktrees, and reports are
+snapshotted before and after. Run `node scripts/e2e-hosts.mjs --live` to add an
+isolated Codex marketplace install and Claude's native plugin validation.
 
 The skills ship dependency-free; `npm ci` installs the release tooling only.
 Releases are cut by semantic-release from conventional commits on `main` — `fix:`
 for a patch, `feat:` for a minor — which versions `package.json` and
-`.claude-plugin/plugin.json` together, writes the changelog and tags.
+both `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` together,
+writes the changelog and tags.
 
 `npm run validate` is opinionated on purpose: a skill whose description does not say *when to use it* never triggers, and a skill pointing at a file that does not exist wastes a real agent's turn discovering that. Both fail the build.
 
