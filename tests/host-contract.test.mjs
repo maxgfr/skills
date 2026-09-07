@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const SCRIPT = join(root, 'scripts', 'e2e-hosts.mjs')
 
-test('the CI-safe host contract proves discovery, hooks and syntax for both hosts', () => {
+test('the CI-safe host contract proves explicit discovery, manual policy and no hooks for both hosts', () => {
   const out = JSON.parse(execFileSync(process.execPath, [SCRIPT, '--json'], { cwd: root, encoding: 'utf8' }))
   assert.equal(out.ok, true)
   assert.deepEqual(out.hosts.map((host) => host.host), ['codex', 'claude'])
@@ -15,6 +15,9 @@ test('the CI-safe host contract proves discovery, hooks and syntax for both host
     assert.equal(host.ok, true)
     assert.deepEqual(host.skills, ['blueprint', 'build', 'verify'])
     assert.ok(host.checks.every((check) => check.ok), JSON.stringify(host.checks))
+    assert.equal(host.checks.find((check) => check.id === 'manual-policy').ok, true)
+    assert.equal(host.checks.find((check) => check.id === 'invocation-syntax').ok, true)
+    assert.equal(host.checks.find((check) => check.id === 'no-registered-hooks').ok, true)
   }
   assert.equal(out.live, null)
 })

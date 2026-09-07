@@ -312,9 +312,8 @@ ${src.replace(/^export\s+const\s+meta\s*=/m, 'const meta =')}
 
   // ------------------------------------------------------------------ hooks
 
-  // A hook the host cannot start is a hook that silently never fires — and a
-  // SessionStart hook that never fires is a plugin that never becomes
-  // automatic. Every command a hooks.json names must resolve, and must parse.
+  // Every command a hooks.json names must resolve and parse. An empty hooks
+  // object is valid for plugins whose helper scripts are manually wired.
   const hooksDir = join(rootDir, 'hooks')
   const hooksPath = join(hooksDir, 'hooks.json')
   if (existsSync(hooksPath)) {

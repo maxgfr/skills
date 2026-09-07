@@ -6,7 +6,7 @@ export const meta = {
   phases: [
     { title: 'Steps', detail: 'implement each S-xxx in dependency waves, review it, run its Verify command' },
     { title: 'Guard', detail: 'forbidden-repairs on the diff after every step — a cheat stops the build' },
-    { title: 'Handoff', detail: 'the step table, and the host-correct verify call that proves the whole' },
+    { title: 'Handoff', detail: 'the step table, and the host-correct verify light call that proves the whole' },
   ],
 }
 
@@ -427,7 +427,7 @@ const status = peerFailure
         : 'blocked'
 
 const residualRisk = [
-  `build proves each step by its own Verify command; the whole is proven by ${skillCall('verify')}, which has not run yet.`,
+  `build proves each step by its own Verify command; the whole is proven by ${skillCall('verify', 'light')}, which has not run yet.`,
 ]
 if (mode === 'peer') residualRisk.push("the peer's own reports were not used as evidence — every step was re-run by the reviewer.")
 if (stoppedBy) residualRisk.push(`the build stopped: ${stoppedBy}`)
@@ -458,7 +458,7 @@ await agent(
 - NOT JUDGED: each step whose status is "unproven", with the reason verbatim. Say plainly that an agent did not return and the step was therefore never judged — do not describe these as failing.
 - STOPPED BY, if set.
 - RESIDUAL RISK: the list in the data.
-- NEXT: ${status === 'built' ? `run ${skillCall('verify', planPath)}` : status === 'unproven' ? `run ${skillCall('build')} again on the same plan — the steps above were never judged` : `the blocked steps above, then ${skillCall('build')} again on the same plan`}.
+- NEXT: ${status === 'built' ? `run ${skillCall('verify', `light ${planPath}`)}` : status === 'unproven' ? `run ${skillCall('build')} again on the same plan — the steps above were never judged` : `the blocked steps above, then ${skillCall('build')} again on the same plan`}.
 
 Report back only the path.
 
@@ -470,5 +470,5 @@ ${JSON.stringify(summary)}`,
 return {
   ...summary,
   run_dir: runDir,
-  next: status === 'built' ? skillCall('verify', planPath) : null,
+  next: status === 'built' ? skillCall('verify', `light ${planPath}`) : null,
 }

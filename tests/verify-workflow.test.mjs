@@ -507,7 +507,38 @@ test('a green run writes no report file and says so instead of naming one', asyn
   )
 })
 
-test('ultralight still repairs a red gate', async () => {
+test('the default red gate is returned after the gates agent without reporting or repair', async () => {
+  const { result, calls } = await run(ultralightArgs(), { gates: FAILING_GATES })
+  assert.deepEqual(calls, ['gates'])
+  assert.equal(result.verdict, 'FAIL')
+  assert.equal(result.report_path, null)
+  assert.equal(result.findings.length, 1)
+})
+
+test('timeout and missing-command defaults invoke no agent besides gates', async () => {
+  for (const gate of [
+    { id: 'test-1', cmd: 'npm test', status: 'timeout', exit_code: null, first_failing_lines: 'timed out' },
+    { id: 'test-1', cmd: 'npm test', status: 'not_run', exit_code: null, first_failing_lines: 'command not found' },
+  ]) {
+    const { result, calls } = await run(ultralightArgs(), { gates: { results: [gate] } })
+    assert.deepEqual(calls, ['gates'], gate.status)
+    assert.equal(result.verdict, 'FAIL', gate.status)
+    assert.equal(result.report_path, null, gate.status)
+    assert.equal(result.gates[0].status, gate.status)
+  }
+})
+
+test('a default run with no detected gate is unproven and invokes no agent', async () => {
+  const { result, calls } = await run(
+    ultralightArgs({ gates: { ...DETECTED, gates: [] } }),
+    {},
+  )
+  assert.deepEqual(calls, [])
+  assert.equal(result.verdict, 'UNPROVEN')
+  assert.equal(result.report_path, null)
+})
+
+test('explicit config can re-enable the ultralight repair loop', async () => {
   const { calls } = await run(
     ultralightArgs({
       mode: 'loop',
@@ -524,6 +555,37 @@ test('ultralight still repairs a red gate', async () => {
   )
   assert.ok(!calls.includes('matrix'), 'the planner came back on the red path')
   assert.ok(calls.includes('final-gates'), 'the fix loop needs matrix.gates to re-run')
+})
+
+test('ultralight crosscheck keeps the reporter when a peer finding survives', async () => {
+  const { result, calls } = await run(
+    ultralightArgs({
+      config: {
+        ...resolveTier('ultralight'),
+        lanes: { ...resolveTier('ultralight').lanes, peer: true },
+      },
+    }),
+    {
+      gates: PASSING_GATES,
+      'peer:crosscheck': {
+        peer_status: 'ok',
+        findings: [{
+          file: 'src/app.ts',
+          line: 42,
+          defect: 'peer found a reachable defect',
+          failure_scenario: 'a real request reaches the broken branch',
+          severity: 'blocking',
+          suggested_fix: 'handle the branch',
+        }],
+      },
+      'judge:': SURVIVES,
+      report: 'written',
+    },
+  )
+  assert.ok(calls.includes('peer:crosscheck'))
+  assert.ok(calls.includes('report'))
+  assert.equal(result.report_path, '/repo/.claude/verify/20260101-000000/REPORT.md')
+  assert.equal(result.findings.length, 1)
 })
 
 test('the detected-gates wrapper object is unwrapped, not passed through', async () => {

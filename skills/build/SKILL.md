@@ -1,6 +1,7 @@
 ---
 name: build
-description: Execute an approved implementation plan step by step — one implementer per S-xxx step in dependency order, a reviewer and a deterministic cheat guard on every step, each step proven by its own Verify command — then hand off to verify. Fire-and-forget, no questions asked. Use when an approved docs/plans/*.md exists and the user says "build it", "implement the plan", "go", "do it", "vas-y", "implémente le plan", "construis-le", "lance le build", or asks to delegate the coding to Codex ("fais coder Codex", "let Codex write it"). Do not use without an approved plan — run blueprint first. Once the code exists, use verify.
+description: Use when the user explicitly invokes build to implement an approved plan, including "implement the plan", "implémente le plan", or "lance le build"; execute it step by step and prove each change before handoff. Never select it implicitly.
+disable-model-invocation: true
 ---
 
 # build
@@ -36,7 +37,7 @@ standalone Claude skill uses `/build`. The table shows the arguments.
 | no arguments | **Default.** The newest approved plan under `docs/plans/`. |
 | `<path>` | That plan. |
 | `peer` | The *other* CLI agent writes the code — Codex from Claude, Claude from Codex — in the worktree, one step at a time. Review and guard unchanged. |
-| `then verify` | After `built`, run `verify` on the same plan in the same turn. |
+| `then verify` | After `built`, run `verify light` on the same plan in the same turn. |
 
 Modifiers combine: `build docs/plans/x.md peer then verify`.
 
@@ -104,8 +105,8 @@ for hosts that dispatch by hand:
 table, not as prose. Then:
 
 ```
-built      → invoke verify <planPath> (name the path — verify ranks the host's
-                                     own plan artifact above docs/plans/)
+built      → invoke verify light <planPath> (name the path — verify light ranks
+                                           the host's own artifact above docs/plans/)
 blocked    → the blocked step, its notes, the skipped dependents; stop.
 unproven   → an agent never returned, so those steps were never judged. Say
              that, offer to re-run; never call an unjudged step failing.
@@ -113,8 +114,8 @@ peer_unavailable → say so in those words, and stop. Do not build host-side
                    unless the user asks again without `peer`.
 ```
 
-Under `then verify`, a `built` result runs `verify`'s Phase 0 with `planPath`
-and calls its workflow in the same turn. Anything else stops.
+Under `then verify`, a `built` result runs `verify`'s Phase 0 with `light` and
+`planPath`, then calls its workflow in the same turn. Anything else stops.
 
 ## What this does not do
 

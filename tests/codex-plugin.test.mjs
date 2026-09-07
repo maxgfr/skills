@@ -7,7 +7,7 @@ import { validate } from '../scripts/validate-skills.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
-test('the Codex plugin exposes the public skills and uses the default hook location', () => {
+test('the Codex plugin exposes explicit-only public skills and registers no hooks', () => {
   const manifestPath = join(root, '.codex-plugin', 'plugin.json')
   assert.ok(existsSync(manifestPath), 'missing .codex-plugin/plugin.json')
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
@@ -15,7 +15,23 @@ test('the Codex plugin exposes the public skills and uses the default hook locat
   assert.equal(manifest.version, JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version)
   assert.equal(manifest.skills, './skills/')
   assert.equal('hooks' in manifest, false, 'current Codex ingestion rejects a manifest hooks field')
-  assert.ok(existsSync(join(root, 'hooks', 'hooks.json')), 'default hooks/hooks.json is missing')
+  assert.deepEqual(manifest.interface.defaultPrompt, [
+    'Use $blueprint to plan this repository change before coding.',
+    'Use $build to implement the approved plan.',
+    "Use $verify to run the repository's verification gates.",
+  ])
+  const hooks = JSON.parse(readFileSync(join(root, 'hooks', 'hooks.json'), 'utf8'))
+  assert.deepEqual(hooks.hooks, {})
+  for (const skill of ['blueprint', 'build', 'verify']) {
+    const skillMd = readFileSync(join(root, 'skills', skill, 'SKILL.md'), 'utf8')
+    const metadata = readFileSync(join(root, 'skills', skill, 'agents', 'openai.yaml'), 'utf8')
+    assert.match(skillMd, /^disable-model-invocation:\s*true$/m)
+    assert.match(metadata, /^interface:$/m)
+    assert.match(metadata, /^\s{2}display_name:\s*"[^"]+"$/m)
+    assert.match(metadata, /^\s{2}short_description:\s*".{25,64}"$/m)
+    assert.match(metadata, /^\s{2}allow_implicit_invocation:\s*false$/m)
+    assert.ok(metadata.includes(`$${skill}`), `${skill} does not advertise its explicit invocation`)
+  }
 })
 
 test('the repo marketplace points at this plugin root with explicit policy', () => {

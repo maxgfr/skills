@@ -53,7 +53,11 @@ test('build fallback turns the approved plan into ordered native-agent dispatche
       reviewer_quality: true,
       guard_verdict: 'CLEAN',
     })
-    assert.equal(out.terminal.invocation, '$verify docs/plans/x.md')
+    assert.equal(out.terminal.invocation, '$verify light docs/plans/x.md')
+    const claude = JSON.parse(execFileSync(process.execPath, [BUILD, '--cwd', repo, '--host', 'claude', '--namespace', 'maxgfr'], { encoding: 'utf8' }))
+    assert.equal(claude.terminal.invocation, '/maxgfr:verify light docs/plans/x.md')
+    const neutral = JSON.parse(execFileSync(process.execPath, [BUILD, '--cwd', repo], { encoding: 'utf8' }))
+    assert.equal(neutral.terminal.invocation, 'invoke the verify skill light docs/plans/x.md')
   } finally {
     rmSync(repo, { recursive: true, force: true })
   }
@@ -113,6 +117,26 @@ test('verify fallback expands resolved lanes into a deterministic parallel dispa
     })
   } finally {
     rmSync(repo, { recursive: true, force: true })
+  }
+})
+
+test('verify fallback defaults to one gates job with expensive phases disabled', () => {
+  const repo = mkdtempSync(join(tmpdir(), 'fallback-verify-default-'))
+  const home = mkdtempSync(join(tmpdir(), 'fallback-verify-home-'))
+  try {
+    const out = JSON.parse(execFileSync(
+      process.execPath,
+      [VERIFY, '--cwd', repo, '--host', 'codex'],
+      { encoding: 'utf8', env: { ...process.env, HOME: home, CODEX_HOME: join(home, '.codex') } },
+    ))
+    assert.equal(out.tier, 'ultralight')
+    assert.deepEqual(out.phases.find((phase) => phase.id === 'lanes').jobs.map((job) => job.id), ['lane:gates'])
+    for (const id of ['matrix', 'dedupe', 'judging', 'fix-loop']) {
+      assert.equal(out.phases.find((phase) => phase.id === id).enabled, false, `${id} must stay off`)
+    }
+  } finally {
+    rmSync(repo, { recursive: true, force: true })
+    rmSync(home, { recursive: true, force: true })
   }
 })
 

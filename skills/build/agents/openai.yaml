@@ -1,0 +1,7 @@
+interface:
+  display_name: "Build"
+  short_description: "Execute an approved implementation plan"
+  default_prompt: "Use $build to implement the approved plan."
+
+policy:
+  allow_implicit_invocation: false

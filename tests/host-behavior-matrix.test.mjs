@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const SCRIPT = join(root, 'scripts/e2e-hosts.mjs')
 
-test('both hosts cover explicit and implicit English/French selection plus nearby counter-prompts', () => {
+test('both hosts discover explicit invocations and do not select manual skills from implicit prompts', () => {
   const out = JSON.parse(execFileSync(process.execPath, [SCRIPT, '--json'], { cwd: root, encoding: 'utf8' }))
   assert.deepEqual(out.matrix.hosts.map((item) => item.host), ['codex', 'claude'])
   for (const host of out.matrix.hosts) {
@@ -15,8 +15,10 @@ test('both hosts cover explicit and implicit English/French selection plus nearb
     assert.equal(host.cases.filter((item) => item.kind === 'selection').length, 6)
     assert.equal(host.cases.filter((item) => item.kind === 'counter-prompt').length, 4)
     assert.deepEqual(new Set(host.cases.filter((item) => item.kind === 'selection').map((item) => item.language)), new Set(['en', 'fr']))
-    assert.ok(host.cases.filter((item) => item.kind === 'selection').some((item) => item.explicit))
-    assert.ok(host.cases.filter((item) => item.kind === 'selection').some((item) => !item.explicit))
+    const explicit = host.cases.filter((item) => item.kind === 'selection' && item.explicit)
+    const implicit = host.cases.filter((item) => item.kind === 'selection' && !item.explicit)
+    assert.ok(explicit.every((item) => item.selected === item.skill), JSON.stringify(explicit))
+    assert.ok(implicit.every((item) => item.selected === null && item.expected === null), JSON.stringify(implicit))
   }
 })
 

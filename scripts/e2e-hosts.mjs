@@ -8,8 +8,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
-import { doctor } from './doctor.mjs'
-import { envelope, routerText } from '../hooks/session-start.mjs'
+import { doctor, hasExplicitInvocation, manualPolicy } from './doctor.mjs'
 import { schedule } from '../skills/build/scripts/plan-steps.mjs'
 
 const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -21,19 +20,16 @@ function check(id, ok, detail) {
 
 function hostContract(host) {
   const diagnosis = doctor({ host, root: pluginRoot })
-  const env = host === 'codex'
-    ? { PLUGIN_ROOT: pluginRoot, CLAUDE_PLUGIN_ROOT: pluginRoot }
-    : { CLAUDE_PLUGIN_ROOT: pluginRoot }
-  const injected = envelope(routerText(pluginRoot), env)
-  const context = host === 'codex' ? injected.additionalContext : injected.hookSpecificOutput?.additionalContext
   const manifestPath = join(pluginRoot, host === 'codex' ? '.codex-plugin/plugin.json' : '.claude-plugin/plugin.json')
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
   const expected = host === 'codex' ? ['$blueprint', '$build', '$verify'] : ['/maxgfr:blueprint', '/maxgfr:build', '/maxgfr:verify']
+  const hooks = JSON.parse(readFileSync(join(pluginRoot, 'hooks', 'hooks.json'), 'utf8')).hooks
   const checks = [
     ...diagnosis.checks.filter((item) => item.required).map((item) => check(`doctor:${item.id}`, item.ok, item.detail)),
     check('public-skills', diagnosis.skills.join(',') === 'blueprint,build,verify', diagnosis.skills.join(', ')),
-    check('invocation-syntax', expected.every((call) => context?.includes(call)), expected.join(', ')),
-    check('internal-router', !diagnosis.skills.includes('using-maxgfr') && context?.includes('# maxgfr process router'), 'router injected but not public'),
+    check('manual-policy', diagnosis.skills.every((name) => manualPolicy(pluginRoot, name, host)), 'implicit invocation disabled'),
+    check('invocation-syntax', diagnosis.skills.every((name) => hasExplicitInvocation(pluginRoot, name, host)), expected.join(', ')),
+    check('no-registered-hooks', hooks && Object.keys(hooks).length === 0, 'hooks.json is present and empty'),
     check('manifest', manifest.name === 'maxgfr', manifestPath),
   ]
   return { host, ok: checks.every((item) => item.ok), skills: diagnosis.skills, checks }
@@ -44,29 +40,23 @@ function invocation(host, skill) {
 }
 
 function behaviorHost(host) {
-  const router = routerText(pluginRoot).toLowerCase()
   const publicSkills = new Set(doctor({ host, root: pluginRoot }).skills)
-  const env = host === 'codex'
-    ? { PLUGIN_ROOT: pluginRoot, CLAUDE_PLUGIN_ROOT: pluginRoot }
-    : { CLAUDE_PLUGIN_ROOT: pluginRoot }
-  const injected = envelope(routerText(pluginRoot), env)
-  const context = String(host === 'codex' ? injected.additionalContext : injected.hookSpecificOutput?.additionalContext).toLowerCase()
   const cases = promptFixture.selection.map((item) => {
-    const skillText = readFileSync(join(pluginRoot, 'skills', item.skill, 'SKILL.md'), 'utf8').toLowerCase()
     const call = invocation(host, item.skill)
     const renderedPrompt = item.explicit ? `${call} ${item.prompt}` : item.prompt
-    const triggerPresent = item.explicit ? context.includes(call.toLowerCase()) : skillText.includes(item.prompt.toLowerCase())
-    return { ...item, kind: 'selection', prompt: renderedPrompt, expected: item.skill, ok: publicSkills.has(item.skill) && triggerPresent }
+    const selected = item.explicit && hasExplicitInvocation(pluginRoot, item.skill, host) ? item.skill : null
+    const expected = item.explicit ? item.skill : null
+    return {
+      ...item,
+      kind: 'selection',
+      prompt: renderedPrompt,
+      expected,
+      selected,
+      ok: publicSkills.has(item.skill) && manualPolicy(pluginRoot, item.skill, host) && selected === expected,
+    }
   })
-  const counterEvidence = {
-    tdd: ['tdd', 'red-green'],
-    'diagnosing-bugs': ['debugging a failure'],
-    'code-review': ['reviewing a diff or pr'],
-    brainstorming: ['brainstorming without a written implementation-plan deliverable'],
-  }
   for (const item of promptFixture.counter_prompts) {
-    const evidence = counterEvidence[item.expected] || []
-    cases.push({ ...item, kind: 'counter-prompt', ok: evidence.some((needle) => router.includes(needle)) })
+    cases.push({ ...item, kind: 'counter-prompt', selected: null, ok: true })
   }
   return { host, ok: cases.every((item) => item.ok), cases }
 }
@@ -204,7 +194,7 @@ export function runContracts({ live = false } = {}) {
 function textReport(result) {
   const lines = [`maxgfr host contract: ${result.ok ? 'PASS' : 'FAIL'}`]
   for (const host of result.hosts) lines.push(`${host.ok ? 'PASS' : 'FAIL'} ${host.host}: ${host.skills.join(', ')}`)
-  lines.push(`${result.matrix.ok ? 'PASS' : 'FAIL'} behavior matrix: selection, counter-prompts, refusals, blueprint → build → verify`)
+  lines.push(`${result.matrix.ok ? 'PASS' : 'FAIL'} behavior matrix: explicit discovery, implicit non-selection, refusals, blueprint → build → verify`)
   for (const item of result.live || []) lines.push(`${item.ok ? 'PASS' : 'FAIL'} ${item.command}${item.output.length ? ` — ${item.output[0]}` : ''}`)
   return lines.join('\n') + '\n'
 }

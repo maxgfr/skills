@@ -1,0 +1,7 @@
+interface:
+  display_name: "Blueprint"
+  short_description: "Create an approved implementation plan"
+  default_prompt: "Use $blueprint to plan this repository change."
+
+policy:
+  allow_implicit_invocation: false

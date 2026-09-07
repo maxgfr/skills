@@ -20,6 +20,7 @@ export function fallbackPlan({ cwd = process.cwd(), host, argv = [] } = {}) {
   if (config.lanes.peer) jobs.push({ id: 'lane:peer', lane: 'peer', brief: `Run peer-run.mjs with --host ${host || 'unresolved'} and treat its claims as candidates.` })
 
   const needsMatrix = config.lanes.spec || config.lanes.defects || config.lanes.behavior !== 'off'
+  const wantsFixLoop = config.loop.enabled === true
   return {
     ok: true,
     host: host || null,
@@ -57,7 +58,7 @@ export function fallbackPlan({ cwd = process.cwd(), host, argv = [] } = {}) {
         },
       },
       { id: 'verdict', enabled: true, parallel: false, after: ['judging'], brief: 'Aggregate only executed evidence and surviving findings.' },
-      { id: 'fix-loop', enabled: config.loop.enabled, parallel: false, after: ['verdict'], max_iterations: config.loop.max_iterations, guard: 'scripts/forbidden-repairs.mjs' },
+      { id: 'fix-loop', enabled: wantsFixLoop, parallel: false, after: ['verdict'], max_iterations: config.loop.max_iterations, guard: 'scripts/forbidden-repairs.mjs' },
     ],
   }
 }

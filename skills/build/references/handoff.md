@@ -13,7 +13,7 @@ BUILD: built — 3 steps done · 0 blocked · 0 skipped     mode: workflow
   S-003  Document the limit         done   grep -q "Rate limits" README.md            exit 0
 
 Worktree: .worktrees/build-rate-limiter   Record: .agents/build/20260901-101500/BUILD.md
-Next: <host verify invocation> docs/plans/2026-09-01-rate-limiter.md
+Next: <host verify invocation> light docs/plans/2026-09-01-rate-limiter.md
 ```
 
 ```
@@ -36,7 +36,7 @@ from the return value is printed only when it says more than the default line.
 
 | Status | Say | Then |
 |---|---|---|
-| `built` | the block, `Next: <host verify invocation> <planPath>` | under `then verify`: run verify's Phase 0 with `planPath` and call its workflow, same turn. Otherwise stop. |
+| `built` | the block, `Next: <host verify invocation> light <planPath>` | under `then verify`: run verify's Phase 0 with `light` and `planPath`, then call its workflow in the same turn. Otherwise stop. |
 | `blocked` | the block, the blocked step's notes, the skipped dependents | stop. The user decides: fix the plan, fix the step by hand, or invoke `build` again on the same plan — the worktree keeps what landed. |
 | `unproven` | the block, and **in these words**: an agent did not return, so those steps were never judged — this is not a verdict on the code | stop, and offer to re-run `build` on the same plan. Do not describe an unproven step as failing, and do not read its code yourself to fill the gap: your reading is not the reviewer's run. |
 | `peer_unavailable` | the block, `peer_unavailable: <reason>` | stop. Do **not** build host-side. The user asked for the other agent; substituting yourself silently is the one thing this mode must not do. |
@@ -48,18 +48,18 @@ infrastructure failure. Re-running the build re-judges them; steps already
 `done` are not re-implemented, because the plan's own `Verify:` commands still
 pass and the reviewer says so.
 
-**Name the plan on the verify call.** `verify` ranks the host's own plan
-artifact above `docs/plans/`, so a bare `verify` can pick up a plan-mode
-scratch file from the same session — newer, and not what `blueprint` wrote.
+**Use `verify light` and name the plan.** The bare default is gates-only and
+does not analyze a plan. `verify light` ranks the host's own plan artifact above
+`docs/plans/`, so an omitted path can select a newer plan-mode scratch file.
 
 ## `then verify`
 
 The chained form exists so the loop runs from one invocation: the user approves
 a plan, and the next thing they read is a verdict. Under `then verify`:
 
-1. `built` → verify's Phase 0 in the same turn, with `planPath` as the promise
-   and the worktree as `cwd`. Its delta is the diff from the build's `baseline`.
-   Call its workflow. Print its verdict block after the build block.
+1. `built` → verify's Phase 0 in the same turn, with `light`, `planPath` as the
+   promise, and the worktree as `cwd`. Its delta is the diff from the build's
+   `baseline`. Call its workflow. Print its verdict block after the build block.
 2. Anything else → the build block, and stop. A verification of a blocked build
    proves what is already known.
 

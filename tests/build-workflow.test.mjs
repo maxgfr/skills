@@ -100,24 +100,25 @@ function run(argsOverride, script, logs = []) {
 
 const HAPPY = { 'impl:': IMPL_OK, 'review:': REVIEW_OK, 'guard:': GUARD_CLEAN, summary: 'written' }
 
-test('a clean build lands every step and hands off to verify on the plan path', async () => {
+test('a clean build lands every step and hands off to verify light on the plan path', async () => {
   const { result, calls } = await run({}, HAPPY)
   assert.equal(result.status, 'built')
   assert.deepEqual(result.steps.map((s) => s.status), ['done', 'done', 'done'])
-  assert.equal(result.next, '/verify docs/plans/2026-01-01-thing.md')
+  assert.equal(result.next, '/verify light docs/plans/2026-01-01-thing.md')
+  assert.match(result.residual_risk[0], /\/verify light, which has not run yet/)
   assert.equal(result.stopped_by, null)
   assert.ok(calls.includes('summary'))
 })
 
 test('the handoff uses the active host syntax', async () => {
-  assert.equal((await run({ host: 'codex' }, HAPPY)).result.next, '$verify docs/plans/2026-01-01-thing.md')
+  assert.equal((await run({ host: 'codex' }, HAPPY)).result.next, '$verify light docs/plans/2026-01-01-thing.md')
   assert.equal(
     (await run({ host: 'claude', namespace: 'maxgfr' }, HAPPY)).result.next,
-    '/maxgfr:verify docs/plans/2026-01-01-thing.md',
+    '/maxgfr:verify light docs/plans/2026-01-01-thing.md',
   )
   assert.equal(
     (await run({ host: null }, HAPPY)).result.next,
-    'invoke the verify skill docs/plans/2026-01-01-thing.md',
+    'invoke the verify skill light docs/plans/2026-01-01-thing.md',
   )
 })
 

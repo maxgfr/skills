@@ -14,7 +14,9 @@ const LANE_NAMES = ['gates', 'spec', 'defects', 'behavior', 'peer']
 
 const BASE = {
   models: Object.fromEntries(MODEL_STAGES.map((name) => [name, 'inherit'])),
-  loop: { enabled: true, max_iterations: 3, fix_severity: 'blocking' },
+  // Whether repair is allowed is tier policy. The base supplies only the
+  // shared bounds so a missing tier policy cannot silently turn the loop on.
+  loop: { max_iterations: 3, fix_severity: 'blocking' },
   gates: { extra: [], skip: [] },
   report: { dir: '.agents/verify', keep_runs: 10 },
 }

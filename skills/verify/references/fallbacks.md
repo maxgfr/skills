@@ -5,6 +5,14 @@ How much of the machinery the host can run. Distinct from the **cost tiers**
 you asked for; these decide where it executes. The laws are the same at every
 one. What changes is how much of the noise reaches your context.
 
+Resolve configuration before advanced pinning. When only gates are enabled and
+`loop.enabled` is false, take the short route at every host tier: detect gates,
+run the gates job once, aggregate its structured evidence, and write the short
+report in the main context. Skip delta, promise, baseline, matrix, dedupe,
+judging, reporter, and fix-loop work. With no gate, dispatch no agent and return
+`UNPROVEN`; do not escalate. Explicit richer configurations use the full host
+paths below.
+
 ## Tier 1 — Workflow (Claude Code)
 
 ```
@@ -20,7 +28,7 @@ Workflow({
     gates,       // detect-gates output VERBATIM — the object, not its .gates array
     config,      // fully resolved: models, effort, lanes, judges, loop, finders
     reportDir,   // <report.dir>/<YYYYMMDD-HHMMSS>, computed in Phase 0
-    baseline,    // git stash create output, for the forbidden-repairs guard
+    baseline,    // git stash create output; only when the repair loop is enabled
     skillDir,    // so the workflow can invoke this skill's scripts
     host         // "claude" | "codex" — required by lane E, omit when it is off
   }
@@ -31,14 +39,17 @@ Workflow({
 itself; handing it the bare array, or a wrapper of your own, makes the gates lane
 silently find nothing and the run returns a verdict over zero executed commands.
 
-The return value carries `report_path`, which is **`null`** when nothing survived
-and no lane died — the workflow spends no agent transcribing an empty run. Write
-the short report yourself in that case, and never print a path to a file nobody
+The return value carries `report_path`. It is **`null`** for every short-route
+outcome and for a richer run when nothing survived and no lane died. Write the
+short report yourself in that case, and never print a path to a file nobody
 wrote. `residual_risk` on the same object names the lanes that never ran.
 
 Everything the lanes need must be **resolved** before it goes in. The workflow is not the config resolver for its own inputs — it receives values, not policy.
 
-The script owns the pipeline: matrix → lanes → judging → report → loop. Every agent's output stays inside the workflow; what returns is the verdict object. Test logs, file reads and finder chatter never enter the session.
+The script owns the enabled pipeline. On the short route that is only the gates
+lane and verdict aggregation; on richer routes it is matrix → lanes → judging →
+report → loop. Every agent's output stays inside the workflow; what returns is
+the verdict object.
 
 Invoking `verify` is itself the explicit opt-in the Workflow tool requires — a skill whose instructions say to call it.
 
@@ -50,6 +61,15 @@ No Workflow tool, but a native subagent tool exists (for example Codex's
 subagent capability). Run `node scripts/fallback-plan.mjs --cwd <repo> --host
 <host> --pretty -- <verify arguments>` first. Its JSON is the authoritative
 phase and lane schedule; execute it without reconstructing policy by hand:
+
+For the default schedule, `matrix`, `dedupe`, `judging`, and `fix-loop` are
+disabled and `lanes.jobs` contains only `lane:gates`. Run that one job once. If
+the detector returned no gates, run no job. Aggregate `PASS`, `FAIL`, or
+`UNPROVEN` and write the compact report yourself; do not repair or dispatch a
+reporter.
+
+For an explicit richer schedule, execute only phases whose `enabled` value is
+true:
 
 1. **Matrix** — one agent, cheap model, returns the matrix JSON. Parse it yourself.
 2. **Lanes** — dispatch in one message so they run concurrently: one gate-runner, one agent per requirement group, one per finder lens, one per behavior claim, and — **only when `lanes.peer` is true** — one for the peer crosscheck. Collect the structured returns.

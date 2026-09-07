@@ -4,7 +4,7 @@ The plan is the promise. Everything that matters has to survive in this file,
 because the agent that implements it will not have been in the conversation —
 that is the point, and it is what makes clearing the context safe.
 
-**Path:** `docs/plans/<YYYY-MM-DD>-<slug>.md`. `verify` already searches
+**Path:** `docs/plans/<YYYY-MM-DD>-<slug>.md`. `verify light` searches
 `docs/plans/`, so a plan written here is found with no configuration. Revisions
 overwrite the same file; there is no `-v2-final`.
 

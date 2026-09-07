@@ -1,13 +1,13 @@
 ---
 name: blueprint
-description: Interrogate the user until nothing is silently assumed, ground the design in the actual repository, then write an approved implementation plan whose every step carries a stable ID, an exact command and a binary completion criterion — optionally challenged by the other CLI agent first. Use when the user asks to plan, design or scope a change before coding, wants their thinking stress-tested, or says "plan this", "grill me", "write the implementation plan", "challenge my idea", "planifie ça", "cuisine-moi", "challenge mon idée", "écris le plan d'implémentation". Do not use merely because the host entered plan mode or exposed a planning tool — the deliverable has to be the written plan. Once the code exists, use verify instead.
+description: Use when the user explicitly invokes blueprint to plan or scope a change, including "plan this", "planifie ça", or "écris le plan d'implémentation"; interrogate decisions, ground them in the repository, and write an approved implementation plan. Never select it implicitly.
+disable-model-invocation: true
 ---
 
 # blueprint
 
 A plan fails for one of two reasons: it answered a question the user never
-agreed to, or it asserted something about the repository that is not true. This
-skill is built against both.
+agreed to, or it asserted something about the repository that is not true. This skill is built against both.
 
 All paths below are relative to this skill's directory.
 ## Three laws
@@ -110,19 +110,19 @@ line is what the write is *for*: `docs/plans/<file>` and
 the work waits.
 
 Then, on the yes, set `status: approved` in the file and hand off. Under
-`auto`, invoke `build docs/plans/<file> then verify` **in the same turn** — no
-`/clear` offer, no prompt between the approval and the verdict; the gate was
+`auto`, invoke `build docs/plans/<file> then verify`, whose terminal handoff is
+`verify light <file>`, in the same turn — no prompt between approval and verdict; the gate was
 the approval. Otherwise offer it:
 
 > The plan is at `docs/plans/<file>`, written to be executed by an agent that
 > was not in this conversation. Invoke `build` with that path to implement it
-> in a worktree, then invoke `verify` with the same path. Now, or clear first?
+> in a worktree, then invoke `verify light` with the same path. Now, or clear first?
 
 Run the self-containment check in `references/artifact.md` **before** offering
 it. If a step still leans on something only this conversation knows, that is a
 gap in the plan, not a reason to keep the context. **Name the path** on both
-calls: `verify` ranks the host's own plan artifact above `docs/plans/`, so a
-bare `verify` can pick up a plan-mode scratch file from the same session.
+calls: `verify light` ranks the host's own plan artifact above `docs/plans/`;
+bare `verify` runs gates only and does not analyze the plan.
 
 ## What this does not do
 

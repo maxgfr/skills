@@ -54,10 +54,10 @@ export function fallbackPlan({ cwd = process.cwd(), plan, host, namespace, mode 
     },
   }))
   const invocation = host === 'codex'
-    ? `$verify ${parsed.planPath}`
+    ? `$verify light ${parsed.planPath}`
     : host === 'claude'
-      ? `/${namespace ? `${namespace}:` : ''}verify ${parsed.planPath}`
-      : `invoke the verify skill ${parsed.planPath}`
+      ? `/${namespace ? `${namespace}:` : ''}verify light ${parsed.planPath}`
+      : `invoke the verify skill light ${parsed.planPath}`
   return {
     ok: true,
     host: host || null,

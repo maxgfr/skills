@@ -7,7 +7,7 @@ import { detectHost, formatInvocation } from '../hooks/invocation.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
-test('the router is internal hook context, not a fourth public skill', () => {
+test('the optional router helper is not a fourth public skill', () => {
   assert.equal(existsSync(join(root, 'skills', 'using-maxgfr', 'SKILL.md')), false)
   const claude = JSON.parse(readFileSync(join(root, '.claude-plugin', 'plugin.json'), 'utf8'))
   assert.deepEqual(claude.skills, ['./skills/blueprint', './skills/build', './skills/verify'])

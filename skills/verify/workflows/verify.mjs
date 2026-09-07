@@ -17,15 +17,15 @@ const A = args || {}
 const cfg = A.config || {}
 const models = cfg.models || {}
 const efforts = cfg.effort || {}
-const lanes = cfg.lanes || { gates: true, spec: true, defects: true, behavior: 'quick' }
-const loopCfg = cfg.loop || { enabled: true, max_iterations: 3, fix_severity: 'blocking' }
+const lanes = cfg.lanes || { gates: true, spec: false, defects: false, behavior: 'off', peer: false }
+const loopCfg = cfg.loop || { enabled: false, max_iterations: 3, fix_severity: 'blocking' }
 // How many skeptics a candidate faces. Phase 0 resolves the tier into these.
 const judgeCfg = { panel: 1, panel_blocking: 3, ...(cfg.judges || {}) }
-// Named so the report can state it. A PASS at `light` bought less evidence than
+// Named so the report can state it. A PASS at `ultralight` bought less evidence than
 // a PASS at `deep`, and a report that does not say which one ran hides that.
 // Must match DEFAULT_TIER in scripts/tiers.mjs. The workflow body runs in a
 // wrapper with no module resolution, so it cannot import the constant.
-const tier = A.tier || cfg.tier || 'light'
+const tier = A.tier || cfg.tier || 'ultralight'
 const mode = A.mode || 'loop'
 const diffCmd = A.diffCmd || 'git diff HEAD'
 const cwd = A.cwd || '.'
@@ -877,7 +877,12 @@ const runState = {
 // survivors, pending() is empty, the fix loop never starts, and nothing below
 // can change the outcome. Keyed on evidence rather than on the tier, because a
 // green `deep` run has just as little to say.
-const reportWorthWriting = survivors.length > 0 || laneFailures.length > 0
+// A one-shot gates-only run returns all of its evidence to the main context,
+// which can write the short report without spending a reporter agent. An
+// explicitly re-enabled repair loop keeps the richer reporting path because
+// its outcome can still change below.
+const oneShotGatesOnly = synthesizeMatrix && lanes.peer !== true && loopCfg.enabled !== true
+const reportWorthWriting = !oneShotGatesOnly && (survivors.length > 0 || laneFailures.length > 0)
 
 // The reporter transcribes; it does not need forty skeptic essays verbatim to
 // do that. Long free-text fields are clipped by name, and the whole payload is
@@ -966,7 +971,7 @@ ${reportPayload.json}`,
 const iterations = []
 let stoppedBy = null
 
-const wantsLoop = mode === 'loop' && loopCfg.enabled !== false
+const wantsLoop = mode === 'loop' && loopCfg.enabled === true
 const fixSeverity = loopCfg.fix_severity || 'blocking'
 const maxIter = loopCfg.max_iterations || 3
 

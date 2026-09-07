@@ -19,7 +19,7 @@ more candidates means more skeptics, so the two multiply.
 that engine loads the preset and deep-merges every file and flag in the order
 above. The table below describes its preset input; the resolver is what runs.
 
-| | `ultralight` | `light` (default) | `normal` | `deep` |
+| | `ultralight` (default) | `light` | `normal` | `deep` |
 |---|---|---|---|---|
 | `lanes.gates` | `true` | `true` | `true` | `true` |
 | `lanes.spec` | `false` | `true` | `true` | `true` |
@@ -30,19 +30,36 @@ above. The table below describes its preset input; the resolver is what runs.
 | Agents before skeptics | 1 | **~7** | ~9 | ~13 |
 | Plus, per candidate found | 0 | 1 | 1 (3 if blocking) | 1 (3 if blocking) |
 
-The second row is the one that bites. Skeptics are spawned per candidate, so the
-cost scales with how much the finders turn up, not with the tier alone: a `light`
-run that finds nothing costs ~7 agents, and one that surfaces nine candidates
-costs ~16 even when all nine are refuted and the verdict is `PASS`. A `deep` run
-on a large diff is where this compounds into the tens.
+The default is one gates agent at most. Explicit analysis tiers spawn skeptics
+per candidate, so their cost scales with what the finders turn up: a `light` run
+that finds nothing costs ~7 agents, and one that surfaces nine candidates costs
+~16 even when all nine are refuted and the verdict is `PASS`.
 
-To pin the token-conscious default explicitly in shared configuration:
+To make analysis and repair the shared default explicitly:
 
 ```json
 { "tier": "light" }
 ```
 
-### `light` — the default
+### `ultralight` — gates only, the default
+
+It resolves configuration, detects the repo's real gates, runs them once, and
+stops. It produces no model-authored finding, so there is nothing to refute and
+law 2 holds by construction. It does not read the diff or promise, build a
+matrix, judge findings, invoke a reporter, or enter the repair loop.
+
+Three consequences:
+
+- **It is not a merge gate.** A green run means the commands passed, not that the
+  change is correct or matches its plan. Use `verify light` for that analysis.
+- **It minimises agents, not wall-clock.** No planner filters detected gates to
+  the diff, so it runs every gate, including e2e and commands lifted from CI.
+- **No gate means `UNPROVEN`.** It spends no agent and does not escalate to a
+  richer tier. A blocking gate that fails, times out, or cannot run returns
+  `FAIL` after the one pass and is not repaired. A non-blocking failure stays in
+  the evidence without sinking the verdict.
+
+### `light` — explicit analysis and repair
 
 It verifies the change: reads the diff for defects across three lenses, checks it
 against the promise, and puts every candidate in front of a skeptic before you
@@ -56,26 +73,6 @@ The spec lane carries its own data guard: with no promise to check against, the
 matrix produces no requirements and the lane costs nothing. You do not have to
 turn it off when there is no plan.
 
-### `ultralight` — gates only, opt-in
-
-It runs the repo's real commands and rules on the exit codes, and stops. It
-produces **no model-authored finding**, so there is nothing to refute and law 2
-holds by construction. An honest gate runner, not a cheap verification.
-
-Two consequences worth stating plainly:
-
-- **It is not a merge gate.** Nothing reads the diff, nothing checks the plan,
-  nothing is run to prove it works. A green run means the commands passed.
-- **It minimises agents, not wall-clock.** With no planner there is nothing to
-  filter the detected gates down to the diff, so it runs *every* gate
-  `detect-gates.mjs` found — including e2e at a 900-second timeout and up to six
-  commands lifted from your CI workflow. On a README-only diff it will still run
-  your test suite, and an unrelated pre-existing failure will fail the run. That
-  is reported as pre-existing, never repaired.
-
-When the detector finds no gate at all, `ultralight` would spend zero agents and
-report `UNPROVEN` over nothing. Phase 0 escalates to `light` instead.
-
 **No tier turns the gates off, and none skips refutation.** Laws 1 and 2 have no
 cheap variant: a run with no executed command reports `UNPROVEN` at every tier,
 and both panel settings floor at 1.
@@ -88,11 +85,11 @@ verify light --lanes gates,defects --lenses wiring,leftovers
 
 ## Defaults
 
-Shown at `light`, the default.
+The resolved no-argument preset is:
 
 ```json
 {
-  "tier": "light",
+  "tier": "ultralight",
   "models": {
     "planner":  "inherit",
     "reporter": "inherit",
@@ -103,16 +100,18 @@ Shown at `light`, the default.
     "fixer":    "inherit"
   },
   "effort": { "gates": "low", "planner": "low", "finders": "medium", "judges": "medium" },
-  "lanes":  { "gates": true, "spec": true, "defects": true, "behavior": "off" },
+  "lanes":  { "gates": true, "spec": false, "defects": false, "behavior": "off", "peer": false },
   "judges": { "panel": 1, "panel_blocking": 1 },
-  "loop":   { "enabled": true, "max_iterations": 3, "fix_severity": "blocking" },
+  "loop":   { "enabled": false, "max_iterations": 3, "fix_severity": "blocking" },
   "gates":  { "extra": [], "skip": [] },
-  "finders": ["correctness", "failure-handling", "wiring"],
+  "finders": ["correctness"],
   "report": { "dir": ".agents/verify", "keep_runs": 10 }
 }
 ```
 
-`deep` adds `state-async`, `trust-input` and `leftovers`.
+Explicit `light` enables spec and defects with the three lenses `correctness`,
+`failure-handling`, and `wiring`; `normal` adds `leftovers`; `deep` adds
+`state-async` and `trust-input`.
 
 Every tier carries a **non-empty** `finders` array, `ultralight` included, even
 though its `lanes.defects` is `false`: an empty array does not mean zero lenses,
@@ -192,7 +191,14 @@ whatever the host provides. Nothing else changes.
 { "loop": { "enabled": false } }
 ```
 
-is `verify report` as a permanent setting. `fix_severity` accepts `blocking` (default), `major` (fixes blocking and major), or `all`.
+disables repair while retaining whichever evidence lanes are enabled.
+`fix_severity` accepts `blocking` (default), `major` (fixes blocking and major),
+or `all`.
+
+`ultralight` sets `enabled: false`; `light`, `normal`, and `deep` set it to
+`true`. An explicit config may override either policy. Enabling the loop on an
+otherwise gates-only configuration selects the full route, including baseline,
+reporting, guard, and recheck work.
 
 `max_iterations` above 5 is usually a sign the change should be re-planned rather than re-fixed.
 
@@ -201,7 +207,8 @@ is `verify report` as a permanent setting. `fix_severity` accepts `blocking` (de
 Flags win over every file.
 
 ```
-verify                         # loop mode, light — gates, plan, 3-lens defect hunt
+verify                         # one-shot ultralight — every detected gate, no analysis
+verify light                   # gates, plan, 3-lens defect hunt, repair loop
 verify normal                  # + behaviour proof and panels on blockers
 verify deep                    # every lens, red-green audit
 verify ultralight              # gates only, no defect hunt
@@ -239,13 +246,12 @@ The `<YYYYMMDD-HHMMSS>` segment is computed in Phase 0 and passed in, so consecu
 | `matrix.json` | The verification matrix the run was built from |
 | `gates.json` | Raw output of `detect-gates.mjs` |
 
-**A run with nothing to report writes none of them.** When no finding survived
-and no lane died, the verdict, the tier and the gate table are the whole report,
-so the workflow returns `report_path: null` and the main context writes a short
-`REPORT.md` itself rather than spend an agent transcribing an empty run. This is
-keyed on evidence, not on the tier — a green `deep` run has as little to say as a
-green `ultralight` one. The four-file set above is what you get whenever there
-*is* something to write down.
+**The one-shot gates-only route never invokes a reporter.** Its workflow result
+returns `report_path: null` for green, red, timeout, missing-command, and no-gate
+outcomes; the main context writes the short `REPORT.md` from structured gate
+evidence and residual risk. Richer runs also skip the reporter when no finding
+survived and no lane died. The four-file set above is for richer reportable
+detail.
 
 Add `.agents/verify/` to `.gitignore`. Runs beyond `keep_runs` are pruned
 oldest-first, in Phase 0, deterministically — pruning does not depend on a model

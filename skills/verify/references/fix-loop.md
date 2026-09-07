@@ -1,6 +1,12 @@
 # Phase 5 — The fix loop
 
-Default mode. Verify, repair the blockers, verify again, stop. The loop is bounded, it proves what it changed, and it is not allowed to win by cheating.
+This phase runs only when the resolved configuration has `loop.enabled: true`.
+The no-argument `ultralight` preset leaves it off and stops after one gates pass,
+including on failure. Explicit `light`, `normal`, and `deep` presets enable it;
+configuration may override either policy.
+
+When enabled: verify, repair the configured severities, verify again, stop. The
+loop is bounded, proves what it changed, and cannot win by cheating.
 
 ## The cycle
 
@@ -100,4 +106,8 @@ The final gate run is not optional and not incremental. Partial evidence is how 
 
 ## Report mode
 
-`verify report` runs Phases 0–4 and stops. No baseline, no writes, nothing to revert. If you then say "fix", the loop runs **once** over the blockers — a single round with the same guard — and re-runs the impacted gates. It does not become the looping mode retroactively; invoke `verify` without `report` if you want that.
+`verify report` runs the enabled read-only phases and stops. No baseline, no
+writes, nothing to revert. If you then say "fix", the loop runs **once** over the
+blockers — a single round with the same guard — and re-runs the impacted gates.
+It does not become looping mode retroactively; invoke an explicit repair tier,
+such as `verify light`, if you want the bounded loop.

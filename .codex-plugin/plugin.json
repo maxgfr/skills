@@ -28,9 +28,9 @@
     ],
     "websiteURL": "https://github.com/maxgfr/skills",
     "defaultPrompt": [
-      "Plan this repository change before coding.",
-      "Implement the approved plan.",
-      "Verify that this change actually works."
+      "Use $blueprint to plan this repository change before coding.",
+      "Use $build to implement the approved plan.",
+      "Use $verify to run the repository's verification gates."
     ]
   }
 }

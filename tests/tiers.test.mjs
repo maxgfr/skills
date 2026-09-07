@@ -8,26 +8,23 @@ import { TIERS, TIER_NAMES, DEFAULT_TIER, LENS_NAMES, resolveTier } from '../ski
 const here = dirname(fileURLToPath(import.meta.url))
 const SCRIPT = join(resolve(here, '..'), 'skills', 'verify', 'scripts', 'tiers.mjs')
 
-test('the default tier actually verifies the change', () => {
-  // The default is the one people invoke. A default that only runs the gates
-  // answers "do the commands pass", not "is this change any good" — which is
-  // the question /verify is asked. It must read the diff and check the promise.
+test('the default tier is gates-only and one-shot', () => {
   const d = resolveTier(DEFAULT_TIER)
-  assert.equal(DEFAULT_TIER, 'light', 'the token-conscious default must stay light')
-  assert.equal(d.lanes.defects, true, 'the default must hunt for defects')
-  assert.equal(d.lanes.spec, true, 'the default must check the change against its promise')
-  assert.ok(d.finders.length >= 2, 'one lens is not a defect hunt')
-  assert.notEqual(DEFAULT_TIER, 'ultralight', 'gates-only is an opt-in, never the default')
+  assert.equal(DEFAULT_TIER, 'ultralight')
+  assert.deepEqual(d.lanes, {
+    gates: true,
+    spec: false,
+    defects: false,
+    behavior: 'off',
+    peer: false,
+  })
+  assert.equal(d.loop.enabled, false)
 })
 
-test('the default is still not the most expensive tier', () => {
-  // It buys real verification, but the lane that starts servers and the
-  // three-skeptic panel stay opt-in — that is what kept the old default at 40
-  // agents.
-  const d = resolveTier(DEFAULT_TIER)
-  assert.equal(d.lanes.behavior, 'off')
-  assert.equal(d.judges.panel_blocking, 1)
-  assert.ok(d.finders.length < TIERS.deep.finders.length)
+test('explicit richer tiers keep their repair loops', () => {
+  for (const name of ['light', 'normal', 'deep']) {
+    assert.equal(resolveTier(name).loop.enabled, true, `${name} must retain repair`)
+  }
 })
 
 test('the tiers are ordered by what they actually run', () => {
@@ -76,9 +73,11 @@ test('resolveTier hands back a fresh object each time', () => {
   const a = resolveTier('normal')
   a.lanes.spec = false
   a.finders.push('bogus')
+  a.loop.enabled = false
   const b = resolveTier('normal')
   assert.equal(b.lanes.spec, true)
   assert.ok(!b.finders.includes('bogus'))
+  assert.equal(b.loop.enabled, true)
 })
 
 test('an unknown tier fails loudly instead of silently resolving to something', () => {

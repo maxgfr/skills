@@ -94,6 +94,41 @@ test('each adjacent config layer overrides the one before it', () => {
   }
 })
 
+test('the default resolves to one-shot ultralight and explicit config can re-enable its loop', () => {
+  const { root, repo, home } = fixture()
+  try {
+    const defaultRun = resolveConfig({ cwd: repo, host: 'claude', env: { HOME: home } })
+    assert.equal(defaultRun.tier, 'ultralight')
+    assert.equal(defaultRun.config.loop.enabled, false)
+    assert.deepEqual(defaultRun.config.lanes, {
+      gates: true,
+      spec: false,
+      defects: false,
+      behavior: 'off',
+      peer: false,
+    })
+
+    json(join(repo, '.agents', 'verify.json'), { loop: { enabled: true } })
+    const overridden = resolveConfig({ cwd: repo, host: 'claude', env: { HOME: home } })
+    assert.equal(overridden.tier, 'ultralight')
+    assert.equal(overridden.config.loop.enabled, true)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('explicit richer tiers retain their loop policy', () => {
+  const { root, repo, home } = fixture()
+  try {
+    for (const tier of ['light', 'normal', 'deep']) {
+      const out = resolveConfig({ cwd: repo, host: 'claude', env: { HOME: home }, argv: [tier] })
+      assert.equal(out.config.loop.enabled, true, `${tier} must retain repair`)
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('invocation parser distinguishes tiers, modes, modifiers, refs and model flags', () => {
   const parsed = parseInvocation([
     'normal', 'crosscheck', 'report', '--ref', 'light', '--behavior', 'full',

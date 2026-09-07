@@ -19,6 +19,27 @@ function executable(name) {
   return spawnSync('sh', ['-c', 'command -v "$1"', 'doctor', name], { encoding: 'utf8' }).status === 0
 }
 
+function skillText(pluginRoot, name, relativePath = 'SKILL.md') {
+  const path = join(pluginRoot, 'skills', name, relativePath)
+  return existsSync(path) ? readFileSync(path, 'utf8') : ''
+}
+
+export function manualPolicy(pluginRoot, name, host) {
+  const skill = skillText(pluginRoot, name)
+  if (!/^disable-model-invocation:\s*true\s*$/m.test(skill)) return false
+  if (host !== 'codex') return true
+  const metadata = skillText(pluginRoot, name, join('agents', 'openai.yaml'))
+  return /^policy:\s*$[\s\S]*?^\s{2}allow_implicit_invocation:\s*false\s*$/m.test(metadata)
+}
+
+export function hasExplicitInvocation(pluginRoot, name, host) {
+  const source = host === 'codex'
+    ? skillText(pluginRoot, name, join('agents', 'openai.yaml'))
+    : skillText(pluginRoot, name)
+  const invocation = host === 'codex' ? `$${name}` : `/maxgfr:${name}`
+  return source.includes(invocation)
+}
+
 export function doctor({ host, root, env = process.env } = {}) {
   const pluginRoot = resolve(root || dirname(dirname(fileURLToPath(import.meta.url))))
   const checks = []
@@ -43,13 +64,19 @@ export function doctor({ host, root, env = process.env } = {}) {
   }
   add('skills', skills.length === 3 && ['blueprint', 'build', 'verify'].every((name) => skills.includes(name)), `${skills.length} public skills: ${skills.join(', ') || 'none'}`)
 
+  const manualSkills = skills.filter((name) => manualPolicy(pluginRoot, name, host))
+  add('manual-policy', manualSkills.length === 3, `${manualSkills.length}/3 skills require explicit invocation`)
+  const explicitSkills = skills.filter((name) => hasExplicitInvocation(pluginRoot, name, host))
+  add('explicit-invocation', explicitSkills.length === 3, `${explicitSkills.length}/3 explicit invocations are advertised`)
+
   const hooksPath = host === 'codex' && manifest?.hooks
     ? join(pluginRoot, manifest.hooks)
     : join(pluginRoot, 'hooks', 'hooks.json')
   const hooksRead = readJson(hooksPath)
   const hooks = hooksRead.value?.hooks
-  add('hooks', Boolean(hooks?.SessionStart && hooks?.Stop), hooks ? hooksPath : `${hooksPath}: ${hooksRead.error || 'missing'}`)
-  add('router', existsSync(join(pluginRoot, 'hooks', 'router.md')), join(pluginRoot, 'hooks', 'router.md'))
+  add('hooks', Boolean(hooks && Object.keys(hooks).length === 0), hooks ? `${hooksPath}; 0 registered hooks` : `${hooksPath}: ${hooksRead.error || 'missing'}`)
+  const helpers = ['router.md', 'session-start.mjs', 'stop-guard.mjs']
+  add('helpers', helpers.every((name) => existsSync(join(pluginRoot, 'hooks', name))), `${join(pluginRoot, 'hooks')}; optional manual helpers`)
 
   const marketplace = join(pluginRoot, '.agents', 'plugins', 'marketplace.json')
   add('marketplace', host !== 'codex' || Boolean(readJson(marketplace).value), marketplace, false)

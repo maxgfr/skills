@@ -1,7 +1,5 @@
-// The two hooks are what make the skills automatic. Each is run the way the
-// host runs it — as a process, JSON on stdin — against a throwaway repository,
-// so every way the guard could nag when it should not, or stay silent when it
-// should not, is a scenario here.
+// The optional hook helpers are tested as standalone processes against a
+// throwaway repository. hooks.json deliberately registers neither helper.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
@@ -306,16 +304,9 @@ test('session-start and Stop recovery use the active host invocation syntax', ()
   }
 })
 
-test('hooks.json names both hooks and every command it runs exists', () => {
+test('hooks.json is present and registers no hooks', () => {
   const hooks = JSON.parse(readFileSync(join(root, 'hooks', 'hooks.json'), 'utf8')).hooks
-  assert.match(hooks.SessionStart[0].matcher, /startup/)
-  assert.match(hooks.SessionStart[0].matcher, /compact/)
-  assert.ok(hooks.Stop, 'no Stop hook')
-  for (const event of ['SessionStart', 'Stop']) {
-    for (const h of hooks[event][0].hooks) {
-      const m = /\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)/.exec(h.command)
-      assert.ok(m, `${event} command does not use CLAUDE_PLUGIN_ROOT`)
-      readFileSync(join(root, m[1]))
-    }
-  }
+  assert.deepEqual(hooks, {})
+  assert.equal('SessionStart' in hooks, false)
+  assert.equal('Stop' in hooks, false)
 })
