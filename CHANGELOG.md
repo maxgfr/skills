@@ -1,3 +1,13 @@
+# [2.0.0](https://github.com/maxgfr/skills/compare/v1.4.0...v2.0.0) (2026-09-07)
+
+
+* feat!: make the default skill flow explicit and lightweight ([1261c2f](https://github.com/maxgfr/skills/commit/1261c2f0ef5abeff2e074b7f98351dbd68ccb7a2))
+
+
+### BREAKING CHANGES
+
+* blueprint, build, and verify now require explicit invocation, and verify defaults to a one-shot gates-only run.
+
 # [1.4.0](https://github.com/maxgfr/skills/compare/v1.3.3...v1.4.0) (2026-09-03)
 
 
