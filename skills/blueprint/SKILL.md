@@ -2,6 +2,7 @@
 name: blueprint
 description: Use when the user explicitly invokes blueprint to plan or scope a change, including "plan this", "planifie ça", or "écris le plan d'implémentation"; interrogate decisions, ground them in the repository, and write an approved implementation plan. Never select it implicitly.
 disable-model-invocation: true
+license: MIT
 ---
 
 # blueprint
@@ -89,8 +90,7 @@ and you will not be able to tell. Then run `scripts/peer-run.mjs --mode plan`,
 passing `--host` as the agent you are running inside; the peer is the other one.
 
 Accepted objections visibly change the plan; deferred material ones block
-approval; rejected ones stay in the appendix and never enter the executable
-sections.
+approval; rejected ones stay in the appendix and never enter the executable sections.
 
 If the peer is unavailable, say so and proceed host-only — unless the user asked
 for the crosscheck, in which case stop rather than relabel your own review.

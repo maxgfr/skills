@@ -2,6 +2,7 @@
 name: build
 description: Use when the user explicitly invokes build to implement an approved plan, including "implement the plan", "implémente le plan", or "lance le build"; execute it step by step and prove each change before handoff. Never select it implicitly.
 disable-model-invocation: true
+license: MIT
 ---
 
 # build
