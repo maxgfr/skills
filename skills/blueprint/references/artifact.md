@@ -116,6 +116,14 @@ implementation round:
 - A type, function or file referenced by one step and defined by none
 - A "Verify" line that is not a command, or whose expected result is "it works"
 
+## Regression evidence
+
+For a behavior fix, name the regression input, expected output and test file.
+Passing existing tests that never exercise the defect is insufficient. Keep
+`S-xxx`, executable verification and evidence citations even for a one-step plan.
+Describe risks through observed callers and failure cases; do not invent numeric
+probabilities or claim a risk is impossible without evidence.
+
 ## Self-review
 
 Three passes, inline, before the plan is shown. Fix what you find; do not
