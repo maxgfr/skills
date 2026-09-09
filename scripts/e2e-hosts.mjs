@@ -3,7 +3,7 @@
 // --live additionally asks the installed CLIs to parse their plugin surfaces.
 
 import { createHash } from 'node:crypto'
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -138,7 +138,7 @@ function behaviorMatrix() {
   }))
   const hosts = ['codex', 'claude'].map(behaviorHost)
   const chain = chainFixture()
-  return { ok: hosts.every((item) => item.ok) && refusals.every((item) => item.ok) && chain.ok, hosts, refusals, chain }
+  return { measurementKind: 'structural-fixture', agentExecuted: false, limitations: ['Selection and refusal checks inspect metadata and instructions; no model executes them.', 'The chain writes fixture artifacts to exercise helpers, not agent behavior.'], ok: hosts.every((item) => item.ok) && refusals.every((item) => item.ok) && chain.ok, hosts, refusals, chain }
 }
 
 function liveCommand(command, argv, options = {}) {
@@ -151,9 +151,17 @@ function liveCommand(command, argv, options = {}) {
   }
 }
 
+export function installedPluginMatches(listing, version) {
+  return listing.split('\n').some((line) => {
+    const columns = line.trim().split(/\s{2,}/)
+    return columns[0] === 'maxgfr@maxgfr-skills' && columns[1] === 'installed, enabled' && columns[2] === version
+  })
+}
+
 function liveCodexInstall() {
   const codexHome = mkdtempSync(join(tmpdir(), 'maxgfr-codex-e2e-'))
   const env = { ...process.env, CODEX_HOME: codexHome }
+  const version = JSON.parse(readFileSync(join(pluginRoot, '.codex-plugin/plugin.json'), 'utf8')).version
   try {
     const steps = [
       liveCommand('codex', ['plugin', 'marketplace', 'add', pluginRoot], { env }),
@@ -163,7 +171,7 @@ function liveCodexInstall() {
     const listing = steps.at(-1).output.join('\n')
     return {
       command: 'isolated Codex marketplace install',
-      ok: steps.every((step) => step.ok) && /maxgfr@maxgfr-skills\s+installed, enabled\s+1\.3\.3/.test(listing),
+      ok: steps.every((step) => step.ok) && installedPluginMatches(listing, version),
       exit_code: steps.find((step) => !step.ok)?.exit_code ?? 0,
       output: steps.flatMap((step) => [`$ ${step.command}`, ...step.output]).slice(0, 30),
     }
@@ -194,7 +202,7 @@ export function runContracts({ live = false } = {}) {
 function textReport(result) {
   const lines = [`maxgfr host contract: ${result.ok ? 'PASS' : 'FAIL'}`]
   for (const host of result.hosts) lines.push(`${host.ok ? 'PASS' : 'FAIL'} ${host.host}: ${host.skills.join(', ')}`)
-  lines.push(`${result.matrix.ok ? 'PASS' : 'FAIL'} behavior matrix: explicit discovery, implicit non-selection, refusals, blueprint → build → verify`)
+  lines.push(`${result.matrix.ok ? 'PASS' : 'FAIL'} structural fixture: invocation metadata, refusal text and helper chain (no agent executed)`)
   for (const item of result.live || []) lines.push(`${item.ok ? 'PASS' : 'FAIL'} ${item.command}${item.output.length ? ` — ${item.output[0]}` : ''}`)
   return lines.join('\n') + '\n'
 }
@@ -210,7 +218,7 @@ function cli(argv) {
   return result.ok ? 0 : 1
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     process.exitCode = cli(process.argv.slice(2))
   } catch (error) {

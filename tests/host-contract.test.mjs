@@ -4,6 +4,8 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { installedPluginMatches } from '../scripts/e2e-hosts.mjs'
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const SCRIPT = join(root, 'scripts', 'e2e-hosts.mjs')
 
@@ -19,6 +21,8 @@ test('the CI-safe host contract proves explicit discovery, manual policy and no 
     assert.equal(host.checks.find((check) => check.id === 'invocation-syntax').ok, true)
     assert.equal(host.checks.find((check) => check.id === 'no-registered-hooks').ok, true)
   }
+  assert.equal(out.matrix.agentExecuted, false)
+  assert.equal(out.matrix.measurementKind, 'structural-fixture')
   assert.equal(out.live, null)
 })
 
@@ -29,4 +33,13 @@ test('the host contract supports help and rejects unknown flags', () => {
   const bad = spawnSync(process.execPath, [SCRIPT, '--wat'], { encoding: 'utf8' })
   assert.notEqual(bad.status, 0)
   assert.match(bad.stderr, /unknown flag/i)
+})
+
+test('live installation checks the manifest version and enabled state exactly', () => {
+  const listing = 'PLUGIN  STATUS  VERSION  SOURCE\nmaxgfr@maxgfr-skills  installed, enabled  2.0.0  /tmp/plugin'
+  assert.equal(installedPluginMatches(listing, '2.0.0'), true)
+  assert.equal(installedPluginMatches(listing, '1.3.3'), false)
+  assert.equal(installedPluginMatches(listing.replace('2.0.0', '2.0.01'), '2.0.0'), false)
+  assert.equal(installedPluginMatches(listing.replace('enabled', 'disabled'), '2.0.0'), false)
+  assert.equal(installedPluginMatches(listing.replace('maxgfr@', 'other@'), '2.0.0'), false)
 })
