@@ -1,3 +1,10 @@
+## [2.0.2](https://github.com/maxgfr/skills/compare/v2.0.1...v2.0.2) (2026-09-09)
+
+
+### Bug Fixes
+
+* **skills:** preserve manual invocation across agent hosts ([05cab73](https://github.com/maxgfr/skills/commit/05cab737e8a294fe9e9d82d1f2f36bb243de0ce5))
+
 ## [2.0.1](https://github.com/maxgfr/skills/compare/v2.0.0...v2.0.1) (2026-09-09)
 
 
