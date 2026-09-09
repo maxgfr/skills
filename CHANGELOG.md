@@ -1,3 +1,11 @@
+## [2.0.1](https://github.com/maxgfr/skills/compare/v2.0.0...v2.0.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* require reproducible regression checks in compact plans ([434e03f](https://github.com/maxgfr/skills/commit/434e03f6fde6b4cdd56bc143d627d58d627e4bf4))
+* verify installed plugin version and label structural host tests ([c8fd2d6](https://github.com/maxgfr/skills/commit/c8fd2d6014faa2b1e9f27b3fc065a1fd13ca9d22))
+
 # [2.0.0](https://github.com/maxgfr/skills/compare/v1.4.0...v2.0.0) (2026-09-07)
 
 
