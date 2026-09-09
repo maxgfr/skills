@@ -1,8 +1,10 @@
 ---
 name: build
-description: Use when the user explicitly invokes build to implement an approved plan, including "implement the plan", "implémente le plan", or "lance le build"; execute it step by step and prove each change before handoff. Never select it implicitly.
+description: Use when the user explicitly invokes build to implement an approved plan and verify the changes.
 disable-model-invocation: true
 license: MIT
+metadata:
+  opencode/autoinvoke: 'false'
 ---
 
 # build
@@ -106,7 +108,7 @@ for hosts that dispatch by hand:
 table, not as prose. Then:
 
 ```
-built      → invoke verify light <planPath> (name the path — verify light ranks
+built      → offer /verify light <planPath> (name the path — verify light ranks
                                            the host's own artifact above docs/plans/)
 blocked    → the blocked step, its notes, the skipped dependents; stop.
 unproven   → an agent never returned, so those steps were never judged. Say
@@ -115,7 +117,7 @@ peer_unavailable → say so in those words, and stop. Do not build host-side
                    unless the user asks again without `peer`.
 ```
 
-Under `then verify`, a `built` result runs `verify`'s Phase 0 with `light` and
+Only when the user explicitly included `then verify`, a `built` result runs `verify`'s Phase 0 with `light` and
 `planPath`, then calls its workflow in the same turn. Anything else stops.
 
 ## What this does not do

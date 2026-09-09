@@ -1,8 +1,10 @@
 ---
 name: blueprint
-description: Use when the user explicitly invokes blueprint to plan or scope a change, including "plan this", "planifie ça", or "écris le plan d'implémentation"; interrogate decisions, ground them in the repository, and write an approved implementation plan. Never select it implicitly.
+description: Use when the user explicitly invokes blueprint to ground decisions and prepare an implementation plan.
 disable-model-invocation: true
 license: MIT
+metadata:
+  opencode/autoinvoke: 'false'
 ---
 
 # blueprint
@@ -109,11 +111,9 @@ line is what the write is *for*: `docs/plans/<file>` and
 `.agents/crosscheck/…` are the deliverable, everything else is the work, and
 the work waits.
 
-Then, on the yes, set `status: approved` in the file and hand off. Under
-`auto`, invoke `build docs/plans/<file> then verify`, whose terminal handoff is
+Then, on the yes, set `status: approved` in the file and hand off. When the user explicitly requests `build` and `verify` with `auto`, invoke `build docs/plans/<file> then verify`, whose terminal handoff is
 `verify light <file>`, in the same turn — no prompt between approval and verdict; the gate was
-the approval. Otherwise offer it:
-
+the approval. A bare `auto` does not authorize another skill. Otherwise offer it:
 > The plan is at `docs/plans/<file>`, written to be executed by an agent that
 > was not in this conversation. Invoke `build` with that path to implement it
 > in a worktree, then invoke `verify light` with the same path. Now, or clear first?

@@ -1,8 +1,10 @@
 ---
 name: verify
-description: Use when the user explicitly invokes verify to check completed work, including "check my work", "verify", or "vérifie"; run repository gates or an explicit richer verification tier with evidence-backed results. Never select it implicitly.
+description: Use when the user explicitly invokes verify to check completed work with repository gates and evidence.
 disable-model-invocation: true
 license: MIT
+metadata:
+  opencode/autoinvoke: 'false'
 ---
 
 # verify
