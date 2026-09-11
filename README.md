@@ -4,7 +4,7 @@ My agent skills. One install, one place to keep them.
 
 They are process skills: they change how an agent works rather than what it knows. Small, composable, and meant to be hacked on — install them, read them, make them yours.
 
-The set grows. Today it is one loop, closed: an agent plans against a repo it half-remembered and a decision you never made, builds something else, and tells you it is done. `blueprint` asks until the decision is yours and grounds the plan in the repo. `build` executes that plan, one proven step at a time, in a worktree, without asking again. `verify` turns completion into an evidence-backed verdict. All three are manual: nothing runs until you invoke a skill by name.
+The set grows. Today it is one loop, closed: an agent plans against a repo it half-remembered and a decision you never made, builds something else, and tells you it is done. `blueprint` asks until the decision is yours and grounds the plan in the repo. `build` executes that plan, one proven step at a time, in a worktree, without asking again. `verify` turns completion into an evidence-backed verdict. All three are manual: nothing runs until you invoke a skill by name, and [one setting per host](#manual-or-automatic) turns that around if you want it.
 
 ## Install
 
@@ -38,8 +38,9 @@ setting:
 | Claude plugin | `/maxgfr:verify light docs/plans/x.md` |
 | Standalone Claude skill | `/verify light docs/plans/x.md` |
 
-Every installation keeps the skills explicit-only. The plugin registers no
-session or stop hooks. From a checkout, `node hooks/session-start.mjs --plain`
+Every installation keeps the skills explicit-only, and
+[Manual or automatic](#manual-or-automatic) is where you change that. The plugin
+registers no session or stop hooks. From a checkout, `node hooks/session-start.mjs --plain`
 prints an optional router for an instructions file; `hooks/stop-guard.mjs` is an
 optional guard you can wire yourself.
 
@@ -383,11 +384,32 @@ Adding a skill: [CONTRIBUTING.md](./CONTRIBUTING.md) · writing one well: [AGENT
 
 MIT
 
-## Manual skill invocation
+## Manual or automatic
 
-These skills run when explicitly invoked: `blueprint`, `build`, `verify`. Use `$name` in Codex or `/name` in Claude Code and OpenCode (with the plugin namespace when installed as a Claude plugin).
+`blueprint`, `build` and `verify` ship **explicit-only**, and every installation
+path keeps them that way: they run when you invoke them, never when the agent
+feels like it. Use `$name` in Codex, `/name` in Claude Code or OpenCode, and
+`/maxgfr:name` when installed as a Claude plugin.
 
-The skill bundle disables implicit selection in Codex and Claude Code. OpenCode V2 reads `metadata.opencode/autoinvoke: "false"`. For OpenCode V1, merge these entries into `permission.skill` in `~/.config/opencode/opencode.json` or the project configuration; retain unrelated permissions:
+Letting the agent choose a skill is one setting per host, applied to the
+**installed** copy of that skill:
+
+| Host | Shipped, manual | Automatic |
+| --- | --- | --- |
+| Claude Code | `disable-model-invocation: true` in `SKILL.md` | delete that line, or set it to `false` |
+| Codex | `allow_implicit_invocation: false` under `policy:` in `agents/openai.yaml` | set it to `true` |
+| OpenCode | `metadata.opencode/autoinvoke: 'false'` in `SKILL.md` | delete that entry, or set it to `'true'` |
+
+Claude Code can do it without touching the file: put
+`"skillOverrides": { "verify": "on" }` in `settings.json`, where
+`"user-invocable-only"` forces manual mode back. Plugin installs ignore
+`skillOverrides`, so edit the frontmatter of the plugin copy instead. Updating
+or reinstalling restores the shipped default, so reapply the change afterwards.
+
+OpenCode V1 reads no `autoinvoke` metadata. Keep them manual with
+`permission.skill` in `~/.config/opencode/opencode.json` or the project
+configuration, retaining unrelated permissions; dropping an entry, or setting
+`"allow"`, is what lets the agent reach that skill:
 
 ```json
 {
@@ -401,4 +423,6 @@ The skill bundle disables implicit selection in Codex and Claude Code. OpenCode 
 }
 ```
 
-On OpenCode 1.18.30, these rules hide the skills from the agent and reject skill-tool loading, while explicit `/name` commands remain available. Installation with `skills add` does not apply this OpenCode V1 configuration.
+On OpenCode 1.18.30 those rules hide the skills from the agent and reject
+skill-tool loading, while the explicit `/name` commands still work. Installation
+with `skills add` does not write this OpenCode V1 configuration.
