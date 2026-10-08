@@ -10,13 +10,13 @@ set and when the tool takes it.
 For each wave in `waves`, in order:
 
 1. Skip any step whose dependency is not `done` (`needs S-xxx`).
-2. Send every implementer of the wave in one message, on tier `tiers.attempts[i]`.
-3. Then send the wave's reviewers in one message, on tier `tiers.review`.
+2. Send every implementer of the wave in one message, each on the tier of its own attempt (`tiers.attempts[i]`).
+3. Then send **one** reviewer for all of them, on tier `tiers.review`.
 4. Decide each step:
-   - The reviewer's `guard` is not `CLEAN`: send the revert brief on tier `tiers.attempts[0]`, mark the step `blocked`, stop the build.
-   - Implementer `exit` 0, reviewer `exit` 0 and `ok`: `done`.
-   - Otherwise, next attempt with the reviewer's issues. After the last attempt: `blocked`.
-   - An agent that never returned: `unproven`, no retry.
+   - The reviewer's `guard` is not `CLEAN`: send the revert brief on tier `tiers.attempts[0]`, mark the reviewed steps `blocked`, stop the build.
+   - Implementer `exit` 0, and the reviewer's entry for it has `exit` 0 and `ok`: `done`.
+   - Otherwise, next attempt with the reviewer's issues. After the last attempt: `blocked`. Repeat 2–4 for the retried steps only.
+   - An agent that never returned, or a step missing from the reviewer's answer: `unproven`, no retry.
 
 Keep only the JSON each agent returns. Do not read diffs or logs yourself; the reviewer did.
 
@@ -48,20 +48,21 @@ The previous attempt was rejected. Fix every item:
 
 ## Reviewer
 
-Returns `{ok, exit, guard, violations?, issues[≤5]}`.
+Returns `{guard, violations?, steps[{id, ok, exit, issues[≤5]}]}`.
 
 ```
 Worktree (the only place you may write; run every command here; do not commit): <cwd>
 Plan: <planPath>
 
-Review the change for this step. Read and run anything; edit nothing.
+Review the change for these steps. Read and run anything; edit nothing.
 
-<the whole ### S-xxx block, verbatim>
+<each ### S-xxx block being reviewed, verbatim, separated by a blank line>
 
-1. Read `git diff <baseline> -- <files>` and any untracked file there (`git status --porcelain`). Every Change bullet present, Preserve untouched, no file outside Files:, no debug output or dead code.
-2. Run: <verifyCmd>
-3. Run: node <skillDir>/scripts/forbidden-repairs.mjs --since <baseline> --plan <planPath>
-Return JSON: ok (1 holds), exit (of 2), guard (the "verdict" of 3), violations (3's violations as "rule file:line"), issues (at most 5, each "file:line — problem").
+1. Read `git diff <baseline> -- <every file of those steps>` and any untracked file there (`git status --porcelain`). Per step: every Change bullet present, Preserve untouched, no file outside its Files:, no debug output or dead code.
+2. Run each step's Verify command:
+   <S-xxx>: <verifyCmd>
+3. Run once: node <skillDir>/scripts/forbidden-repairs.mjs --since <baseline> --plan <planPath>
+Return JSON: guard (the "verdict" of 3), violations (3's violations as "rule file:line"), steps (one per step: id, ok (1 holds), exit (of its command in 2), issues (at most 5, each "file:line — problem")).
 ```
 
 When you dispatch by hand you have Bash: you may run step 3 yourself instead.

@@ -29,9 +29,8 @@ const FAN = [step('S-001', []), step('S-002', ['S-001']), step('S-003', ['S-001'
 const FAN_WAVES = [['S-001'], ['S-002', 'S-003']]
 
 const IMPL_OK = { done: true, files: ['src/x.ts'], exit: 0, out: 'ok' }
-const REVIEW_OK = { ok: true, exit: 0, guard: 'CLEAN', issues: [] }
-const REJECT = { ok: false, exit: 1, guard: 'CLEAN', issues: ['src/S-001.ts:3 — missing branch'] }
-const HAPPY = { 'impl:': IMPL_OK, 'review:': REVIEW_OK }
+const OK = { ok: true, exit: 0, issues: [] }
+const REJECT = { ok: false, exit: 1, issues: ['src/S-001.ts:3 — missing branch'] }
 const TIERS = {
   small: { model: 'tier-s', effort: 'max' },
   medium: { model: 'tier-m', effort: 'high' },
@@ -40,7 +39,22 @@ const TIERS = {
   review: 'medium',
 }
 
-// Longest pattern wins, so `review:S-002` beats `review:`.
+// A reviewer stub judges every step named in its brief; `verdict(id, n)` gets
+// how many times that step has been reviewed so far.
+const idsIn = (prompt) => [...new Set([...prompt.matchAll(/^### (S-\d{3})/gm)].map((m) => m[1]))]
+function reviewer(verdict = () => OK, extra = {}) {
+  const seen = new Map()
+  return (prompt) => ({
+    guard: 'CLEAN',
+    ...extra,
+    steps: idsIn(prompt).map((id) => {
+      seen.set(id, (seen.get(id) || 0) + 1)
+      return { id, ...verdict(id, seen.get(id)) }
+    }),
+  })
+}
+const HAPPY = { 'impl:': IMPL_OK, 'review:': reviewer() }
+
 function makeAgent(script, calls) {
   const patterns = Object.keys(script).sort((a, b) => b.length - a.length)
   return async (prompt, opts = {}) => {
@@ -71,6 +85,16 @@ test('the handoff uses the host syntax it was given, and never guesses one', asy
   assert.equal((await run({ host: null }, HAPPY)).result.next, 'invoke the verify skill with docs/plans/x.md')
 })
 
+test('a wave of parallel steps shares one reviewer, which reruns every Verify and the guard once', async () => {
+  const wide = [step('S-001', []), step('S-002', []), step('S-003', [])]
+  const { result, calls } = await run({ steps: wide, waves: [['S-001', 'S-002', 'S-003']] }, HAPPY)
+  const reviews = calls.filter((c) => c.label.startsWith('review:'))
+  assert.equal(reviews.length, 1)
+  for (const id of ['S-001', 'S-002', 'S-003']) assert.ok(reviews[0].prompt.includes(`${id}: npm test -- ${id}`))
+  assert.equal(reviews[0].prompt.match(/forbidden-repairs\.mjs/g).length, 1)
+  assert.equal(result.status, 'built')
+})
+
 test('implementers get the small tier and reviewers the medium one, model and effort', async () => {
   const { calls } = await run({}, HAPPY)
   for (const c of calls) {
@@ -84,20 +108,8 @@ test('an unset tier passes no model and no effort, so the agent inherits the ses
   assert.ok(calls.every((c) => c.model === undefined && c.effort === undefined))
 })
 
-test('the ladder and the reviewer tier come from the config', async () => {
-  const tiers = { ...TIERS, attempts: ['medium', 'large'], review: 'large', large: { model: 'tier-l', effort: 'xhigh' } }
-  const { calls, result } = await run({ steps: [CHAIN[0]], tiers }, { ...HAPPY, 'review:': REJECT })
-  assert.deepEqual(calls.map((c) => [c.label, c.model]), [
-    ['impl:S-001:1', 'tier-m'],
-    ['review:S-001:1', 'tier-l'],
-    ['impl:S-001:2', 'tier-l'],
-    ['review:S-001:2', 'tier-l'],
-  ])
-  assert.match(result.lines[0], /^S-001 blocked 1 large /)
-})
-
 test('a rejected step escalates small, small with the issues, then medium, then blocks', async () => {
-  const { result, calls } = await run({}, { ...HAPPY, 'review:S-001': REJECT })
+  const { result, calls } = await run({}, { ...HAPPY, 'review:': reviewer((id) => (id === 'S-001' ? REJECT : OK)) })
   const impls = calls.filter((c) => c.label.startsWith('impl:S-001'))
   assert.deepEqual(impls.map((c) => c.model), ['tier-s', 'tier-s', 'tier-m'])
   assert.ok(!impls[0].prompt.includes('missing branch'))
@@ -108,13 +120,34 @@ test('a rejected step escalates small, small with the issues, then medium, then 
   assert.equal(result.next, null)
 })
 
+test('in a shared wave only the rejected step is retried, and the retry gets its own review', async () => {
+  const { result, labels, calls } = await run(
+    { steps: FAN, waves: FAN_WAVES },
+    { ...HAPPY, 'review:': reviewer((id, n) => (id === 'S-002' && n === 1 ? REJECT : OK)) },
+  )
+  assert.deepEqual(labels, ['impl:S-001:1', 'review:w1:1', 'impl:S-002:1', 'impl:S-003:1', 'review:w2:1', 'impl:S-002:2', 'review:w2:2'])
+  assert.deepEqual(idsIn(calls.find((c) => c.label === 'review:w2:2').prompt), ['S-002'])
+  assert.equal(result.status, 'built')
+})
+
 test('the medium attempt can land a step the small ones could not', async () => {
-  let n = 0
-  const { result } = await run({ steps: [CHAIN[0]] }, { ...HAPPY, 'review:': () => (++n < 3 ? REJECT : REVIEW_OK) })
+  const { result } = await run({ steps: [CHAIN[0]] }, { ...HAPPY, 'review:': reviewer((id, n) => (n < 3 ? REJECT : OK)) })
   assert.deepEqual(result.lines, ['S-001 done 0 medium'])
 })
 
-test('a small implementer that reports blocked_by goes straight to medium; a medium one blocks', async () => {
+test('the ladder and the reviewer tier come from the config', async () => {
+  const tiers = { ...TIERS, attempts: ['medium', 'large'], review: 'large', large: { model: 'tier-l', effort: 'xhigh' } }
+  const { calls, result } = await run({ steps: [CHAIN[0]], tiers }, { ...HAPPY, 'review:': reviewer(() => REJECT) })
+  assert.deepEqual(calls.map((c) => [c.label, c.model]), [
+    ['impl:S-001:1', 'tier-m'],
+    ['review:w1:1', 'tier-l'],
+    ['impl:S-001:2', 'tier-l'],
+    ['review:w1:2', 'tier-l'],
+  ])
+  assert.match(result.lines[0], /^S-001 blocked 1 large /)
+})
+
+test('a small implementer that reports blocked_by goes straight to the last tier; there it blocks', async () => {
   const blocked = { ...IMPL_OK, done: false, exit: -1, blocked_by: 'needs a migration' }
   const { result, labels } = await run({ steps: [CHAIN[0]] }, { ...HAPPY, 'impl:S-001': blocked })
   assert.deepEqual(labels, ['impl:S-001:1', 'impl:S-001:3'])
@@ -122,12 +155,12 @@ test('a small implementer that reports blocked_by goes straight to medium; a med
 })
 
 test('a reviewer that rejects is not overruled by an implementer that reported green', async () => {
-  const { result } = await run({ steps: [CHAIN[0]], tiers: { ...TIERS, attempts: ['small'] } }, { ...HAPPY, 'review:': { ...REVIEW_OK, ok: false } })
+  const { result } = await run({ steps: [CHAIN[0]], tiers: { ...TIERS, attempts: ['small'] } }, { ...HAPPY, 'review:': reviewer(() => ({ ...OK, ok: false })) })
   assert.equal(result.status, 'blocked')
 })
 
 test('an agent that never returned is unproven, buys no retry, and never hands off', async () => {
-  for (const missing of ['impl:S-001', 'review:S-001']) {
+  for (const missing of ['impl:S-001', 'review:']) {
     const { result, labels } = await run({}, { ...HAPPY, [missing]: null })
     assert.match(result.lines[0], /^S-001 unproven .* never returned/)
     assert.equal(labels.filter((l) => l.startsWith('impl:S-001')).length, 1)
@@ -136,41 +169,44 @@ test('an agent that never returned is unproven, buys no retry, and never hands o
   }
 })
 
+test('a step the reviewer left out of its answer is unproven, not done', async () => {
+  const { result } = await run({ steps: [CHAIN[0]] }, { ...HAPPY, 'review:': () => ({ guard: 'CLEAN', steps: [] }) })
+  assert.match(result.lines[0], /^S-001 unproven .* did not judge it/)
+})
+
 test('blocked outranks unproven when both happen', async () => {
-  const { result } = await run({ steps: FAN, waves: FAN_WAVES }, { ...HAPPY, 'review:S-002': { ...REJECT }, 'review:S-003': null })
+  const { result } = await run(
+    { steps: FAN, waves: FAN_WAVES },
+    { ...HAPPY, 'review:': (prompt) => ({ guard: 'CLEAN', steps: idsIn(prompt).filter((id) => id !== 'S-003').map((id) => ({ id, ...(id === 'S-002' ? REJECT : OK) })) }) },
+  )
   assert.equal(result.status, 'blocked')
 })
 
-test('a wave waits for the wave before it', async () => {
-  const { labels } = await run({ steps: FAN, waves: FAN_WAVES }, HAPPY)
-  assert.ok(labels.indexOf('impl:S-002:1') > labels.indexOf('review:S-001:1'))
-  assert.ok(labels.indexOf('impl:S-003:1') > labels.indexOf('review:S-001:1'))
-})
-
-test('a forbidden repair is reverted by the small tier and stops the build', async () => {
-  const { result, calls, labels } = await run({}, { ...HAPPY, 'review:S-001': { ...REVIEW_OK, guard: 'FORBIDDEN', violations: ['test-skip tests/a.test.ts:4'] }, 'revert:': 'reverted' })
-  const revert = calls.find((c) => c.label === 'revert:S-001')
+test('a forbidden repair is reverted by the first-attempt tier and stops the build', async () => {
+  const { result, calls, labels } = await run(
+    {},
+    { ...HAPPY, 'review:': reviewer(() => OK, { guard: 'FORBIDDEN', violations: ['test-skip tests/a.test.ts:4'] }), 'revert:': 'reverted' },
+  )
+  const revert = calls.find((c) => c.label === 'revert:w1')
   assert.ok(revert && revert.model === 'tier-s')
   assert.ok(revert.prompt.includes('test-skip tests/a.test.ts:4'))
-  assert.match(result.stopped_by, /forbidden repair in S-001/)
+  assert.match(result.stopped_by, /^forbidden repair: test-skip/)
   assert.ok(!labels.some((l) => l.startsWith('impl:S-002')))
   assert.equal(result.status, 'blocked')
 })
 
 test('a long violation list stays one short line, and the revert still gets all of it', async () => {
-  // Seen for real: twenty violations on one file turned the one-line step
-  // report into a wall of text.
   const violations = Array.from({ length: 20 }, (_, i) => `spec-rewrite plan.md:${i + 1}`)
-  const { result, calls } = await run({ steps: [CHAIN[0]] }, { ...HAPPY, 'review:': { ...REVIEW_OK, guard: 'FORBIDDEN', violations }, 'revert:': 'ok' })
+  const { result, calls } = await run({ steps: [CHAIN[0]] }, { ...HAPPY, 'review:': reviewer(() => OK, { guard: 'FORBIDDEN', violations }), 'revert:': 'ok' })
   assert.match(result.stopped_by, /plan\.md:1, spec-rewrite plan\.md:2, spec-rewrite plan\.md:3 \+17 more$/)
   assert.ok(result.lines[0].length < 160, result.lines[0])
-  assert.ok(calls.find((c) => c.label === 'revert:S-001').prompt.includes('plan.md:20'))
+  assert.ok(calls.find((c) => c.label === 'revert:w1').prompt.includes('plan.md:20'))
 })
 
 test('the reviewer reruns Verify and the guard on the baseline and the plan', async () => {
   const { calls } = await run({ steps: [CHAIN[0]] }, HAPPY)
   const review = calls.find((c) => c.label.startsWith('review:')).prompt
-  assert.ok(review.includes('Run: npm test -- S-001'))
+  assert.ok(review.includes('S-001: npm test -- S-001'))
   assert.ok(review.includes('node /skill/scripts/forbidden-repairs.mjs --since abc --plan docs/plans/x.md'))
   const impl = calls.find((c) => c.label.startsWith('impl:')).prompt
   assert.ok(impl.includes(CHAIN[0].raw) && impl.includes('YOU MAY NOT'))

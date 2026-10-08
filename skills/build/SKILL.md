@@ -25,7 +25,7 @@ Paths are relative to this skill's directory.
 ## Phase 0: one pass, no questions
 
 1. `node scripts/plan-steps.mjs --cwd <repo> [--plan <path>] --host <host>`. `host` is the CLI you run in (`claude`, `codex`, `opencode`…). Pass it, never guess it. On `ok: false`, print `error` and stop. Otherwise keep `planPath`, `steps`, `waves`, `tiers`.
-2. Worktree: the host's worktree tool (`EnterWorktree`), else `git worktree add .worktrees/build-<slug> -b build/<slug>`. Never build on the user's branch.
+2. Worktree from the **local** `HEAD`: `git worktree add -b build/<slug> ../<repo>-build-<slug> HEAD`. Not a tool that branches from the remote: it would miss unpushed commits. If the tree is dirty, say in one line that uncommitted changes are not in the build. The plan need not be there: the steps travel in `steps`.
 3. Baseline: `git stash create` in the worktree. Empty output means `HEAD`.
 4. Launch in the same turn:
    - **Workflow tool:** `Workflow({ scriptPath: "workflows/build.mjs", args: { cwd, planPath, steps, waves, tiers, skillDir, baseline, host, namespace } })`. Pass `namespace: "maxgfr"` under the Claude plugin only.

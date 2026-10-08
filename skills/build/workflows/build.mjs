@@ -1,9 +1,9 @@
 export const meta = {
   name: 'build',
-  description: 'Execute an approved plan: a small-tier implementer per step in dependency waves, a medium-tier reviewer that reruns Verify and the guard, escalation on failure',
+  description: 'Execute an approved plan: a small-tier implementer per step in dependency waves, one medium-tier reviewer per wave that reruns every Verify and the guard, escalation on failure',
   whenToUse: 'After a blueprint plan is approved. Invoked by the build skill; never on its own.',
   phases: [
-    { title: 'Steps', detail: 'implement, review, guard — per S-xxx, in dependency waves' },
+    { title: 'Steps', detail: 'implement each S-xxx, then one review + guard per wave' },
   ],
 }
 
@@ -55,13 +55,23 @@ const IMPL_SCHEMA = {
 
 const REVIEW_SCHEMA = {
   type: 'object',
-  required: ['ok', 'exit', 'guard', 'issues'],
+  required: ['guard', 'steps'],
   properties: {
-    ok: { type: 'boolean' },
-    exit: { type: 'number' },
     guard: { type: 'string', enum: ['CLEAN', 'FORBIDDEN'] },
     violations: { type: 'array', items: { type: 'string' } },
-    issues: { type: 'array', maxItems: 5, items: { type: 'string' } },
+    steps: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['id', 'ok', 'exit', 'issues'],
+        properties: {
+          id: { type: 'string' },
+          ok: { type: 'boolean' },
+          exit: { type: 'number' },
+          issues: { type: 'array', maxItems: 5, items: { type: 'string' } },
+        },
+      },
+    },
   },
 }
 
@@ -79,80 +89,105 @@ ${step.raw}
 ${FORBIDDEN}${feedback ? `\n\nThe previous attempt was rejected. Fix every item:\n${feedback}` : ''}`
 }
 
-function reviewBrief(step) {
-  const files = step.files && step.files.length ? step.files.join(' ') : '.'
+// One reviewer per round of a wave: it judges every step just implemented,
+// reruns each Verify, and runs the guard once on the whole diff.
+function reviewBrief(ids) {
+  const list = ids.map((id) => byId.get(id))
+  const files = list.flatMap((s) => s.files || [])
   return `${CONTEXT}
 
-Review the change for this step. Read and run anything; edit nothing.
+Review the change for these steps. Read and run anything; edit nothing.
 
-${step.raw}
+${list.map((s) => s.raw).join('\n\n')}
 
-1. Read \`git diff ${baseline} -- ${files}\` and any untracked file there (\`git status --porcelain\`). Every Change bullet present, Preserve untouched, no file outside Files:, no debug output or dead code.
-2. Run: ${step.verifyCmd}
-3. Run: node ${skillDir}/scripts/forbidden-repairs.mjs --since ${baseline}${planPath ? ` --plan ${planPath}` : ''}
-Return JSON: ok (1 holds), exit (of 2), guard (the "verdict" of 3), violations (3's violations as "rule file:line"), issues (at most 5, each "file:line — problem").`
+1. Read \`git diff ${baseline} -- ${files.length ? files.join(' ') : '.'}\` and any untracked file there (\`git status --porcelain\`). Per step: every Change bullet present, Preserve untouched, no file outside its Files:, no debug output or dead code.
+2. Run each step's Verify command:
+${list.map((s) => `   ${s.id}: ${s.verifyCmd}`).join('\n')}
+3. Run once: node ${skillDir}/scripts/forbidden-repairs.mjs --since ${baseline}${planPath ? ` --plan ${planPath}` : ''}
+Return JSON: guard (the "verdict" of 3), violations (3's violations as "rule file:line"), steps (one per step: id, ok (1 holds), exit (of its command in 2), issues (at most 5, each "file:line — problem")).`
 }
 
 // An agent that never returned judged nothing: the step is `unproven`, it buys
 // no retry, and it is not a pass.
-async function runStep(id) {
-  const step = byId.get(id)
-  const rec = state.get(id)
-  let feedback = null
-  for (let i = 0; i < attempts.length && !stoppedBy; i++) {
-    const tier = attempts[i]
-    rec.tier = tier
-    const impl = await agent(implBrief(step, feedback), {
-      schema: IMPL_SCHEMA,
-      ...on(tier),
-      label: `impl:${id}:${i + 1}`,
-      phase: 'Steps',
-    })
-    if (!impl) return Object.assign(rec, { status: 'unproven', notes: 'implementer never returned' })
-    if (impl.blocked_by) {
+const unproven = (rec, why) => Object.assign(rec, { status: 'unproven', notes: why })
+
+async function runWave(wave, w) {
+  const at = new Map(wave.map((id) => [id, 0])) // each step's index into attempts
+  const feedback = new Map()
+  let pending = wave.slice()
+  for (let round = 1; pending.length && !stoppedBy; round++) {
+    const impls = await parallel(
+      pending.map((id) => () => {
+        const tier = attempts[at.get(id)]
+        state.get(id).tier = tier
+        return agent(implBrief(byId.get(id), feedback.get(id)), { schema: IMPL_SCHEMA, ...on(tier), label: `impl:${id}:${at.get(id) + 1}`, phase: 'Steps' })
+      }),
+    )
+    const implExit = new Map()
+    const review = []
+    const next = []
+    pending.forEach((id, k) => {
+      const rec = state.get(id)
+      const impl = impls[k]
+      if (!impl) return unproven(rec, 'implementer never returned')
+      if (!impl.blocked_by) {
+        implExit.set(id, impl.exit)
+        return review.push(id)
+      }
       rec.notes = `blocked_by: ${impl.blocked_by}`
-      // A small model that says it cannot is worth one look from the medium
-      // one; a medium model that says it cannot means the plan is short.
+      // A small model that says it cannot is worth one look from the last
+      // tier; the last tier saying it cannot means the plan is short.
       const last = attempts.length - 1
-      if (i >= last || attempts[last] === tier) return Object.assign(rec, { status: 'blocked' })
-      feedback = `- the previous implementer stopped: ${impl.blocked_by}`
-      i = last - 1
-      continue
-    }
-    const rev = await agent(reviewBrief(step), {
-      schema: REVIEW_SCHEMA,
-      ...on(REVIEW_TIER),
-      label: `review:${id}:${i + 1}`,
-      phase: 'Steps',
+      if (at.get(id) >= last || attempts[last] === rec.tier) return Object.assign(rec, { status: 'blocked' })
+      feedback.set(id, `- the previous implementer stopped: ${impl.blocked_by}`)
+      at.set(id, last)
+      next.push(id)
     })
-    if (!rev) return Object.assign(rec, { status: 'unproven', notes: 'reviewer never returned' })
-    // One forbidden hunk anywhere stops the build: a step landed by silencing
-    // a checker poisons every step after it.
-    if (rev.guard !== 'CLEAN') {
-      const all = rev.violations || []
-      await agent(`${CONTEXT}\n\nRevert exactly these forbidden hunks and nothing else: ${all.join(', ') || 'unspecified'}. Use \`git checkout -p\` or restore and re-apply the clean hunks. Return the reverted files.`, {
-        ...on(attempts[0]),
-        label: `revert:${id}`,
-        phase: 'Steps',
-      })
-      // The output is one line per step: name the first few, count the rest.
-      const shown = all.slice(0, 3).join(', ') || 'unspecified'
-      stoppedBy = `forbidden repair in ${id}: ${shown}${all.length > 3 ? ` +${all.length - 3} more` : ''}`
-      return Object.assign(rec, { status: 'blocked', notes: stoppedBy })
+    if (review.length) {
+      const rev = await agent(reviewBrief(review), { schema: REVIEW_SCHEMA, ...on(REVIEW_TIER), label: `review:w${w}:${round}`, phase: 'Steps' })
+      if (!rev) review.forEach((id) => unproven(state.get(id), 'reviewer never returned'))
+      else if (rev.guard !== 'CLEAN') {
+        // One forbidden hunk anywhere stops the build: a step landed by
+        // silencing a checker poisons every step after it.
+        const all = rev.violations || []
+        await agent(`${CONTEXT}\n\nRevert exactly these forbidden hunks and nothing else: ${all.join(', ') || 'unspecified'}. Use \`git checkout -p\` or restore and re-apply the clean hunks. Return the reverted files.`, {
+          ...on(attempts[0]),
+          label: `revert:w${w}`,
+          phase: 'Steps',
+        })
+        // The output is one line per step: name the first few, count the rest.
+        stoppedBy = `forbidden repair: ${all.slice(0, 3).join(', ') || 'unspecified'}${all.length > 3 ? ` +${all.length - 3} more` : ''}`
+        review.forEach((id) => Object.assign(state.get(id), { status: 'blocked', notes: stoppedBy }))
+      } else
+        for (const id of review) {
+          const rec = state.get(id)
+          const v = (rev.steps || []).find((x) => x.id === id)
+          if (!v) {
+            unproven(rec, 'the reviewer did not judge it')
+            continue
+          }
+          rec.exit = v.exit
+          if (implExit.get(id) === 0 && v.exit === 0 && v.ok) {
+            Object.assign(rec, { status: 'done', notes: null })
+            continue
+          }
+          const issues = (v.issues || []).slice(0, 5).map((x) => `- ${x}`)
+          if (v.exit !== 0) issues.unshift(`- Verify exited ${v.exit} for the reviewer`)
+          feedback.set(id, issues.join('\n') || '- rejected without detail')
+          rec.notes = feedback.get(id).replace(/\n/g, ' ')
+          log(`${id} attempt ${at.get(id) + 1}/${attempts.length} (${rec.tier}) rejected`)
+          at.set(id, at.get(id) + 1)
+          if (at.get(id) >= attempts.length) rec.status = 'blocked'
+          else next.push(id)
+        }
     }
-    rec.exit = rev.exit
-    if (impl.exit === 0 && rev.exit === 0 && rev.ok) return Object.assign(rec, { status: 'done', notes: null })
-    const issues = (rev.issues || []).slice(0, 5).map((s) => `- ${s}`)
-    if (rev.exit !== 0) issues.unshift(`- Verify exited ${rev.exit} for the reviewer`)
-    feedback = issues.join('\n') || '- rejected without detail'
-    rec.notes = feedback.replace(/\n/g, ' ')
-    log(`${id} attempt ${i + 1}/${attempts.length} (${tier}) rejected`)
+    pending = next
   }
-  if (rec.status === 'pending') rec.status = 'blocked'
+  for (const id of pending) Object.assign(state.get(id), { status: 'blocked', notes: state.get(id).notes || 'build stopped' })
 }
 
 phase('Steps')
-for (const wave of waves) {
+for (const [w, wave] of waves.entries()) {
   if (stoppedBy) break
   const runnable = []
   for (const id of wave) {
@@ -162,7 +197,7 @@ for (const wave of waves) {
     if (unmet) Object.assign(state.get(id), { status: 'skipped', notes: `needs ${unmet}` })
     else runnable.push(id)
   }
-  await parallel(runnable.map((id) => () => runStep(id)))
+  if (runnable.length) await runWave(runnable, w + 1)
 }
 for (const rec of state.values())
   if (rec.status === 'pending') Object.assign(rec, { status: 'skipped', notes: stoppedBy ? 'build stopped' : 'never scheduled' })

@@ -27,7 +27,7 @@ self-contained, so `npx skills add maxgfr/skills --skill verify` takes just one.
 
 ```text
 $blueprint            # grill → ground → write docs/plans/<date>-<slug>.md → you approve
-$build                # worktree → per step: small implements, medium reviews + reruns Verify + guard
+$build                # worktree from local HEAD → small implements each step, one medium review per wave
 $verify               # default: the repo's gates once, a few lines → PASS | FAIL | UNPROVEN
 $verify <plan>        # + one large-tier audit of the diff against the plan (also: $verify audit)
 
@@ -38,7 +38,7 @@ $blueprint auto       # all three from one call, after your approval
 |---|---|---|
 | Plan | `large` (the session) | `blueprint` |
 | Implement a step | `small` | `build` |
-| Review a step, rerun its proof | `medium` | `build` |
+| Review a wave of steps, rerun every proof and the guard | `medium` | `build` |
 | Escalation after two failed small attempts | `medium` | `build` |
 | Final audit (on request, or after `build … then verify`) | `large` | `verify` |
 

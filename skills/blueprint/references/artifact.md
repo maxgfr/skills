@@ -51,7 +51,7 @@ The implementer is a small model that reads one step and nothing else.
 - **No open choice.** Pick the name, the type, the error message, the library. "Add appropriate handling" is a choice left open.
 - **One step = one diff a reviewer reads at a glance.** Fold setup into the step that needs it. Split only where a reviewer could reject one half and accept the other.
 - **Self-contained.** Never "same as S-003": repeat it. A symbol a step consumes is produced by an earlier step it depends on.
-- **Verify is a command with a binary result.** For a bug fix, the command runs a test that fails before the change: name its file, its input and the expected output.
+- **Verify is a command with a binary result.** Prefer the repo's own test command aimed at one file (`npm test -- tests/x.test.ts`) over a runner invoked by hand. For a bug fix, the command runs a test that fails before the change: name its file, its input and the expected output.
 
 ## Before showing it
 

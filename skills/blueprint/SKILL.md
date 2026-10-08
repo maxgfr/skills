@@ -29,7 +29,8 @@ none (write a new plan), `<path>` (revise that plan), `auto` (after approval, ru
 2. **Grill.** `references/grill.md`. Skip it only when no open decision could change behavior, scope, an interface, the data or the acceptance criterion.
 3. **Ground.** Reopen the files the answers implicate. Every fact the plan relies on gets a `path:line`. A file to create is named as new.
 4. **Write.** `references/artifact.md`, to `docs/plans/<YYYY-MM-DD>-<slug>.md`, with `status: awaiting-approval`. If one local pattern dominates, use it. Otherwise pick an approach and state in one line why it wins.
-5. **Approve.** Show the path and ask for approval in those words. Before the yes, the plan file is the only thing you write.
+5. **Check.** Run each step's Verify command once, output capped (`2>&1 | tail -5`). It must pass, or fail only because the step's change is missing (a file, a symbol, an assertion). A usage error, an unknown flag, a missing tool or a runner rejecting its arguments means the command is wrong: fix it in the plan. Skip any command that would write.
+6. **Approve.** Show the path and ask for approval in those words. Before the yes, the plan file is the only thing you write.
 
 On approval, set `status: approved`. Then:
 
