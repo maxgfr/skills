@@ -1,3 +1,10 @@
+# [4.1.0](https://github.com/maxgfr/skills/compare/v4.0.0...v4.1.0) (2026-10-08)
+
+
+### Features
+
+* short plans built by the session, automatic from plan mode ([0707a71](https://github.com/maxgfr/skills/commit/0707a7143272fa4eb1629cdca217bddb1b459c4c))
+
 # [4.0.0](https://github.com/maxgfr/skills/compare/v3.2.0...v4.0.0) (2026-10-08)
 
 
