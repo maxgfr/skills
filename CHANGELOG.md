@@ -1,3 +1,14 @@
+# [6.0.0](https://github.com/maxgfr/skills/compare/v5.0.0...v6.0.0) (2026-10-08)
+
+
+* feat!: the session chooses solo or delegate and each step's tier ([7ec5605](https://github.com/maxgfr/skills/commit/7ec560521bb2ba75223ec76da2ba8c97805730bd))
+
+
+### BREAKING CHANGES
+
+* the solo and attempts keys of models.json are gone;
+only small, medium, large, review and audit are read.
+
 # [5.0.0](https://github.com/maxgfr/skills/compare/v4.1.1...v5.0.0) (2026-10-08)
 
 
