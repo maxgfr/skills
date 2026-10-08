@@ -128,13 +128,15 @@ async function runStep(id) {
     // One forbidden hunk anywhere stops the build: a step landed by silencing
     // a checker poisons every step after it.
     if (rev.guard !== 'CLEAN') {
-      const v = (rev.violations || []).join(', ') || 'unspecified'
-      await agent(`${CONTEXT}\n\nRevert exactly these forbidden hunks and nothing else: ${v}. Use \`git checkout -p\` or restore and re-apply the clean hunks. Return the reverted files.`, {
+      const all = rev.violations || []
+      await agent(`${CONTEXT}\n\nRevert exactly these forbidden hunks and nothing else: ${all.join(', ') || 'unspecified'}. Use \`git checkout -p\` or restore and re-apply the clean hunks. Return the reverted files.`, {
         model: model('small'),
         label: `revert:${id}`,
         phase: 'Steps',
       })
-      stoppedBy = `forbidden repair in ${id}: ${v}`
+      // The output is one line per step: name the first few, count the rest.
+      const shown = all.slice(0, 3).join(', ') || 'unspecified'
+      stoppedBy = `forbidden repair in ${id}: ${shown}${all.length > 3 ? ` +${all.length - 3} more` : ''}`
       return Object.assign(rec, { status: 'blocked', notes: stoppedBy })
     }
     rec.exit = rev.exit

@@ -136,6 +136,16 @@ test('a forbidden repair is reverted by the small tier and stops the build', asy
   assert.equal(result.status, 'blocked')
 })
 
+test('a long violation list stays one short line, and the revert still gets all of it', async () => {
+  // Seen for real: twenty violations on one file turned the one-line step
+  // report into a wall of text.
+  const violations = Array.from({ length: 20 }, (_, i) => `spec-rewrite plan.md:${i + 1}`)
+  const { result, calls } = await run({ steps: [CHAIN[0]] }, { ...HAPPY, 'review:': { ...REVIEW_OK, guard: 'FORBIDDEN', violations }, 'revert:': 'ok' })
+  assert.match(result.stopped_by, /plan\.md:1, spec-rewrite plan\.md:2, spec-rewrite plan\.md:3 \+17 more$/)
+  assert.ok(result.lines[0].length < 160, result.lines[0])
+  assert.ok(calls.find((c) => c.label === 'revert:S-001').prompt.includes('plan.md:20'))
+})
+
 test('the reviewer reruns Verify and the guard on the baseline and the plan', async () => {
   const { calls } = await run({ steps: [CHAIN[0]] }, HAPPY)
   const review = calls.find((c) => c.label.startsWith('review:')).prompt
