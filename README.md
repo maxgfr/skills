@@ -16,7 +16,7 @@ That works everywhere. Add `--skill verify` to take a single skill. Native plugi
 
 ## Use
 
-Work as usual: open your agent's plan mode, or just describe the change. blueprint takes over, asks its questions and writes the plan; approving it (leaving plan mode) is the only thing you do. build and verify follow on their own, and you get one line per step, a verdict, and the worktree to merge.
+Work as usual: open your agent's plan mode, or just describe the change. blueprint takes over, asks its questions and writes the plan; approving it (leaving plan mode) is the only thing you do. build and verify follow on their own, and you get one line per step, a verdict, and the worktree with its changes left uncommitted for you to review, commit and merge.
 
 Each skill also runs alone: build on an approved plan in `docs/plans/`, verify on any finished work (checks only), or verify with a plan path to add the audit.
 
@@ -44,7 +44,7 @@ With no config, every tier is your session's model. To pick models, write `~/.ag
 }
 ```
 
-A tier is `{ "model", "effort" }` or just a model name. `review` (default `"medium"`) and `audit` (`"large"`) move those two roles; the rest is the session's call.
+A tier is `{ "model", "effort" }` or just a model name, which runs at your session's effort: set `effort` to push a small model further (`"max"` above). `review` (default `"medium"`) and `audit` (`"large"`) move those two roles; the rest is the session's call.
 
 ## Run only on request
 

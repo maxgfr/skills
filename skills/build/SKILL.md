@@ -1,6 +1,6 @@
 ---
 name: build
-description: Implement an approved plan in a worktree, alone for a short plan, else with small-tier coders and a medium-tier reviewer. Use when a plan was just approved, including on leaving plan mode, or when an approved docs/plans/ plan exists and the user wants it implemented.
+description: Implement an approved plan in a worktree, alone for a short plan, else with small- or medium-tier coders and a medium-tier reviewer. Use when a plan was just approved, including on leaving plan mode, or when an approved docs/plans/ plan exists and the user wants it implemented.
 license: MIT
 metadata:
   opencode/autoinvoke: 'true'
