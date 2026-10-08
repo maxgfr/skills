@@ -46,14 +46,32 @@ test('a SKILL.md over the line budget fails; one at the budget passes', () => {
   }
 })
 
+test('a skill holds Markdown only: a script in it fails', () => {
+  const scripted = fixtureRepo(10, (dir) => {
+    mkdirSync(join(dir, 'skills', 'demo', 'scripts'))
+    writeFileSync(join(dir, 'skills', 'demo', 'scripts', 'x.mjs'), 'export {}\n')
+  })
+  const plain = fixtureRepo(10, (dir) => {
+    mkdirSync(join(dir, 'skills', 'demo', 'agents'))
+    writeFileSync(join(dir, 'skills', 'demo', 'agents', 'openai.yaml'), 'policy:\n  allow_implicit_invocation: true\n')
+  })
+  try {
+    assert.ok(validate(scripted).problems.some((p) => /x\.mjs/.test(p.file) && /is not Markdown/.test(p.message)))
+    assert.deepEqual(validate(plain).problems, [])
+  } finally {
+    rmSync(scripted, { recursive: true, force: true })
+    rmSync(plain, { recursive: true, force: true })
+  }
+})
+
 test('a model name anywhere under skills/ fails; tier words pass', () => {
   const named = fixtureRepo(10, (dir) => {
-    mkdirSync(join(dir, 'skills', 'demo', 'scripts'))
-    writeFileSync(join(dir, 'skills', 'demo', 'scripts', 'x.mjs'), "const model = 'sonnet'\n")
+    mkdirSync(join(dir, 'skills', 'demo', 'agents'))
+    writeFileSync(join(dir, 'skills', 'demo', 'agents', 'openai.yaml'), 'interface:\n  default_prompt: "Run it on sonnet."\n')
   })
   const tiers = fixtureRepo(10, (dir) => {
-    mkdirSync(join(dir, 'skills', 'demo', 'scripts'))
-    writeFileSync(join(dir, 'skills', 'demo', 'scripts', 'x.mjs'), "const tiers = ['small', 'medium', 'large']\n")
+    mkdirSync(join(dir, 'skills', 'demo', 'agents'))
+    writeFileSync(join(dir, 'skills', 'demo', 'agents', 'openai.yaml'), 'interface:\n  default_prompt: "Run it on small, medium or large."\n')
   })
   try {
     assert.ok(validate(named).problems.some((p) => /names the model "sonnet"/.test(p.message)))
@@ -86,19 +104,17 @@ test('a description routes if it says when to invoke, however it is phrased', ()
 })
 
 test('a path nested under another directory is not read as a skill-relative one', () => {
-  // `.github/scripts/render.mjs` is correct as written. Capturing the bare
-  // `scripts/render.mjs` out of it reports a missing file that is right there.
-  const refs = extractReferences('run `node .github/scripts/render-cv-pdf.mjs --out ./tmp`')
-  assert.ok(!refs.has('scripts/render-cv-pdf.mjs'), [...refs].join(', '))
+  // `docs/references/style.md` is correct as written. Capturing the bare
+  // `references/style.md` out of it reports a missing file that is right there.
+  const refs = extractReferences('see `docs/references/style.md` for the house style')
+  assert.ok(!refs.has('references/style.md'), [...refs].join(', '))
 })
 
 test('genuinely skill-relative paths are still collected', () => {
   const refs = extractReferences(
-    'Read references/lanes.md first, then `scripts/detect-gates.mjs`, then [the loop](references/fix-loop.md).',
+    'Read references/lanes.md first, then `references/audit.md`, then [the loop](references/fix-loop.md).',
   )
-  assert.ok(refs.has('references/lanes.md'))
-  assert.ok(refs.has('scripts/detect-gates.mjs'))
-  assert.ok(refs.has('references/fix-loop.md'))
+  assert.deepEqual([...refs].sort(), ['references/audit.md', 'references/fix-loop.md', 'references/lanes.md'])
 })
 
 test('a description that only says what it does does not route', () => {

@@ -9,7 +9,6 @@
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs'
 import { join, dirname, basename, relative, resolve, sep } from 'node:path'
-import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -23,21 +22,20 @@ export const LISTING_CAP = 1536
 // several ways; only demanding "Use when" flags perfectly good skills.
 export const TRIGGER =
   /\buse\s+(when|this|for)\b|\btriggers?\b\s*[:—-]|\binvoke\s+(when|this|it|without)\b|\bwhen the user\b|\buse it when\b|\bfor when\b/i
-// Paths a SKILL.md points at, which must resolve inside the skill directory.
-// The lookbehind matters: without it `.github/scripts/build.mjs` yields a bare
-// `scripts/build.mjs`, which is then looked for inside the skill and reported
+// The references a SKILL.md points at, which must resolve inside the skill.
+// The lookbehind matters: without it `.github/references/x.md` yields a bare
+// `references/x.md`, which is then looked for inside the skill and reported
 // missing — flagging a path that is perfectly correct as written.
 export function extractReferences(body) {
   const refs = new Set()
-  for (const m of body.matchAll(/\]\(([^)#]+\.(?:md|mjs|js|sh|json))\)/g)) refs.add(m[1])
-  for (const m of body.matchAll(/`((?:references|scripts|workflows|assets)\/[^`\s]+)`/g))
-    refs.add(m[1])
-  for (const m of body.matchAll(
-    /(?<![\w/.-])((?:references|scripts|workflows)\/[A-Za-z0-9._-]+\.(?:md|mjs))\b/g,
-  ))
-    refs.add(m[1])
+  for (const m of body.matchAll(/\]\(([^)#:]+\.md)\)/g)) refs.add(m[1])
+  for (const m of body.matchAll(/(?<![\w/.-])(references\/[A-Za-z0-9._-]+\.md)\b/g)) refs.add(m[1])
   return refs
 }
+
+// A skill is instructions, nothing to install or run: SKILL.md, references/*.md,
+// and the Codex interface file. Anything else fails, so the skills stay light.
+export const SKILL_FILE = /^(SKILL\.md|references\/[^/]+\.md|agents\/openai\.yaml)$/
 
 // A model reads the whole SKILL.md every time the skill triggers. Past this
 // many lines the excess belongs in references/, loaded only when a phase needs
@@ -194,39 +192,10 @@ export function validate(dir = root) {
       if (!existsSync(target)) fail(file, `references a file that does not exist: ${ref}`)
     }
 
-    // Every .mjs the skill ships must parse.
-    for (const entry of existsSync(join(dir, 'scripts')) ? readdirSync(join(dir, 'scripts')) : []) {
-      if (!entry.endsWith('.mjs')) continue
-      const script = join(dir, 'scripts', entry)
-      try {
-        execFileSync(process.execPath, ['--check', script], { stdio: 'pipe' })
-      } catch (err) {
-        fail(script, `does not parse: ${String(err.stderr || err).split('\n')[1] || err.message}`)
-      }
-    }
-
-    // Workflow scripts run inside a wrapper that permits top-level return, so a
-    // plain `node --check` rejects a perfectly valid one. Compile the body the
-    // way the runtime will — without ever running it.
-    const wfDir = join(dir, 'workflows')
-    for (const entry of existsSync(wfDir) ? readdirSync(wfDir) : []) {
-      if (!entry.endsWith('.mjs')) continue
-      const script = join(wfDir, entry)
-      const src = readFileSync(script, 'utf8')
-      if (!/^export\s+const\s+meta\s*=\s*\{/m.test(src))
-        fail(script, 'a workflow script must start with `export const meta = { ... }`.')
-      try {
-        // eslint-disable-next-line no-new-func
-        new Function(`async function __workflow(args, agent, parallel, pipeline, phase, log) {
-${src.replace(/^export\s+const\s+meta\s*=/m, 'const meta =')}
-}`)
-      } catch (err) {
-        fail(script, `does not parse as a workflow body: ${err.message}`)
-      }
-      for (const forbidden of ['Date.now(', 'Math.random(']) {
-        if (src.includes(forbidden))
-          fail(script, `uses ${forbidden}) — non-determinism breaks workflow resume.`)
-      }
+    for (const path of walk(dir)) {
+      const rel = relative(dir, path).split(sep).join('/')
+      if (!SKILL_FILE.test(rel))
+        fail(path, 'is not Markdown. A skill holds SKILL.md, references/*.md and agents/openai.yaml only.')
     }
 
     // References should not be orphans — an unlinked reference is one the agent never reads.
