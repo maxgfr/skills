@@ -222,8 +222,11 @@ if (has('deno.json') || has('deno.jsonc')) {
 // The CI workflow is the repo's own definition of "green". Anything it runs
 // that we did not already derive is worth surfacing.
 
-const CI_SIGNAL = /\b(test|lint|typecheck|type-check|tsc|build|check|validate|verify|audit|vitest|jest|playwright|cypress|pytest|mypy|ruff|eslint|biome|clippy|cargo|go test)\b/
-const CI_NOISE = /^(npm ci|npm i\b|npm install|pnpm i\b|pnpm install|yarn install|bun install|corepack|git |echo |cd |mkdir |curl |apt-get|brew )/
+const CI_SIGNAL = /\b(tests?|lint|typecheck|type-check|tsc|build|check|shellcheck|validate|verify|audit|vitest|jest|playwright|cypress|pytest|mypy|ruff|eslint|biome|clippy|cargo|go test)\b/
+// Setup, not proof: installs (also `npm --prefix ui install`), file shuffling,
+// and the shell's own `test`/`[` builtins.
+const CI_INSTALL = /^(?:sudo\s+)?(?:npm|pnpm|yarn|bun)\s(?!.*\brun\b).*\b(?:ci|i|install|add)(?:\s|$)/
+const CI_NOISE = /^(?:sudo\s+)?(test\s+[-!]|\[\s|(?:cp|mv|rm|ln|touch|chmod|export)\s|npm ci|npm i\b|npm install|pnpm i\b|pnpm install|yarn install|bun install|corepack|git |echo |cd |mkdir |curl |apt-get|brew )/
 
 // YAML may quote the whole scalar. A command that merely ENDS in a quote —
 // `node --test "tests/**/*.mjs"` — is not quoted, and stripping that quote
@@ -235,6 +238,17 @@ function unquote(value) {
   }
   return value
 }
+
+// Only a workflow that runs on push or pull_request says what green is. A
+// scheduled data refresh or a manual release job is not a gate.
+function runsOnChanges(yaml) {
+  const m = /^on:(.*(?:\n(?:[ \t].*|\s*))*)/m.exec(yaml)
+  return !m || /\b(push|pull_request)\b/.test(m[1])
+}
+
+const SHELL_OPEN = /^(if|for|while|until|case)\b/
+const SHELL_CLOSE = /^(fi|done|esac)\b/
+let compoundsSkipped = 0
 
 function extractRunCommands(yaml) {
   const out = []
@@ -249,6 +263,9 @@ function extractRunCommands(yaml) {
       // its own command yields fragments like `playwright test \`, which then
       // become gates that cannot run — a fabricated failure on a healthy repo.
       let pending = ''
+      // An if/for/while/case leans on the steps before it: run alone, or split
+      // into lines, it fails where the repo does not. It is skipped whole.
+      let depth = 0
       for (let j = i + 1; j < lines.length; j++) {
         const line = lines[j]
         if (line.trim() === '') continue
@@ -256,6 +273,16 @@ function extractRunCommands(yaml) {
         if (indent <= baseIndent) break
         i = j
         const text = line.trim()
+        // A comment runs as a no-op that exits 0: as a gate it proves nothing.
+        if (text.startsWith('#')) continue
+        if (SHELL_OPEN.test(text)) {
+          if (depth === 0) compoundsSkipped++
+          depth++
+        }
+        if (depth) {
+          if (SHELL_CLOSE.test(text)) depth--
+          continue
+        }
         if (text.endsWith('\\')) {
           pending += text.slice(0, -1).trim() + ' '
           continue
@@ -279,9 +306,9 @@ if (existsSync(wfDir)) {
   for (const file of readdirSync(wfDir).sort()) {
     if (!/\.ya?ml$/.test(file)) continue
     const yaml = read('.github', 'workflows', file)
-    if (!yaml) continue
+    if (!yaml || !runsOnChanges(yaml)) continue
     const found = extractRunCommands(yaml)
-      .filter((c) => CI_SIGNAL.test(c) && !CI_NOISE.test(c))
+      .filter((c) => CI_SIGNAL.test(c) && !CI_NOISE.test(c) && !CI_INSTALL.test(c))
       .map((c) => c.trim())
     if (found.length) {
       ciWorkflows.push(file)
@@ -290,8 +317,17 @@ if (existsSync(wfDir)) {
   }
 }
 
+if (compoundsSkipped)
+  notes.push(`${compoundsSkipped} shell block(s) with if/for/while/case in CI were not run as gates: they depend on the steps before them.`)
+
 const CI_EXTRA_CAP = 6
-const ciExtras = ciCommands.filter((c) => !gates.some((g) => g.cmd === c))
+// `pnpm test` and `pnpm run test` are one gate; running both runs the suite twice.
+const sameScript = (c) => c.replace(/^(pnpm|yarn|bun) run /, '$1 ').replace(/^npm run (test|start)\b/, 'npm $1')
+// $RUNNER_TEMP, $GITHUB_WORKSPACE, ${{ … }}: the step only exists on a GitHub runner.
+const RUNNER_ONLY = /\$\{?(RUNNER_|GITHUB_)|\$\{\{/
+const ciExtras = ciCommands.filter(
+  (c) => !RUNNER_ONLY.test(c) && !gates.some((g) => sameScript(g.cmd) === sameScript(c)),
+)
 for (const cmd of ciExtras.slice(0, CI_EXTRA_CAP)) addGate('ci', cmd, 'ci', { blocking: true })
 if (ciExtras.length > CI_EXTRA_CAP) {
   notes.push(
@@ -364,7 +400,9 @@ if (args.includes('--run')) {
 function runGate(gate) {
   const r = spawnSync(gate.cmd, {
     cwd,
-    shell: true,
+    // bash where it exists, as on GitHub Actions: a CI step written for bash
+    // is not a failure of the repo when /bin/sh cannot parse it.
+    shell: process.platform !== 'win32' && existsSync('/bin/bash') ? '/bin/bash' : true,
     encoding: 'utf8',
     timeout: gate.timeout_s * 1000,
     maxBuffer: 64 * 1024 * 1024,

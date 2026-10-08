@@ -158,6 +158,105 @@ test('a CI step that is the body of a covered script is dropped too', () => {
   }
 })
 
+test('a shell comment in a CI block is not a gate, and a bash test suite or shellcheck is one', () => {
+  // A comment that mentions "test" became the only gate of a shell repo: it
+  // exits 0 when run, so verify said PASS while the real suite never ran.
+  const dir = mkdtempSync(join(tmpdir(), 'detect-ci-'))
+  try {
+    mkdirSync(join(dir, '.github', 'workflows'), { recursive: true })
+    writeFileSync(
+      join(dir, '.github', 'workflows', 'ci.yml'),
+      [
+        'jobs:',
+        '  t:',
+        '    steps:',
+        '      - run: |',
+        '          sudo apt-get install -y jq shellcheck',
+        '          # Decimal-comma locale: the suite runs every test under it too',
+        '          sudo locale-gen fr_FR.UTF-8',
+        '      - run: shellcheck -s bash -S warning script.sh tests/run.sh',
+        '      - run: bash tests/run.sh',
+        '',
+      ].join('\n'),
+    )
+    const out = JSON.parse(execFileSync(process.execPath, [SCRIPT, '--cwd', dir], { encoding: 'utf8' }))
+    assert.deepEqual(cmds(out), ['shellcheck -s bash -S warning script.sh tests/run.sh', 'bash tests/run.sh'])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+function detectCi(files) {
+  const dir = mkdtempSync(join(tmpdir(), 'detect-ci-'))
+  try {
+    mkdirSync(join(dir, '.github', 'workflows'), { recursive: true })
+    for (const [name, yaml] of Object.entries(files)) writeFileSync(join(dir, '.github', 'workflows', name), yaml)
+    return JSON.parse(execFileSync(process.execPath, [SCRIPT, '--cwd', dir], { encoding: 'utf8' }))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+test('a shell if-block in CI is never split into gates, and says it was skipped', () => {
+  // Run alone, `if node check …; then` is a syntax error: a failure the repo does not have.
+  const r = detectCi({
+    'ci.yml': [
+      'on: [push]',
+      'jobs:',
+      '  t:',
+      '    steps:',
+      '      - run: |',
+      '          node scripts/x.mjs render --out /tmp/s',
+      '          if node scripts/x.mjs check --out /tmp/s; then',
+      '            echo "::error::check accepted it"',
+      '            exit 1',
+      '          fi',
+      '          node scripts/x.mjs check --out assets/example',
+      '',
+    ].join('\n'),
+  })
+  assert.deepEqual(cmds(r), ['node scripts/x.mjs check --out assets/example'])
+  assert.ok(r.notes.some((n) => /1 shell block\(s\) with if\/for\/while\/case/.test(n)), JSON.stringify(r.notes))
+})
+
+test('a shell test builtin is not a gate', () => {
+  const r = detectCi({ 'ci.yml': 'on: push\njobs:\n  t:\n    steps:\n      - run: test -f /tmp/demo/SRD.json\n      - run: test ! -e dist/docker\n      - run: "[ -d references ]"\n      - run: npm test\n' })
+  assert.deepEqual(cmds(r), ['npm test'])
+})
+
+test('setup steps are not gates: file copies and installs, even with options', () => {
+  const r = detectCi({
+    'ci.yml': 'on: push\njobs:\n  t:\n    steps:\n      - run: cp tests/fixtures/brief.json /tmp/s/brief.json\n      - run: npm --prefix ui install --no-audit\n      - run: sudo apt-get install -y shellcheck\n      - run: npm --prefix ui run test -- --run\n',
+  })
+  assert.deepEqual(cmds(r), ['npm --prefix ui run test -- --run'])
+})
+
+test('a CI step that needs the GitHub runner is skipped, and a script alias runs once', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'detect-ci-'))
+  try {
+    mkdirSync(join(dir, '.github', 'workflows'), { recursive: true })
+    writeFileSync(join(dir, 'pnpm-lock.yaml'), '')
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ scripts: { test: 'vitest run', typecheck: 'tsc' } }))
+    writeFileSync(
+      join(dir, '.github', 'workflows', 'ci.yml'),
+      'on: push\njobs:\n  t:\n    steps:\n      - run: node x.mjs check --out "$RUNNER_TEMP/run18"\n      - run: pnpm test\n      - run: pnpm typecheck\n',
+    )
+    const r = JSON.parse(execFileSync(process.execPath, [SCRIPT, '--cwd', dir], { encoding: 'utf8' }))
+    assert.deepEqual(cmds(r).sort(), ['pnpm run test', 'pnpm run typecheck'])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('only workflows that run on push or pull_request define green', () => {
+  const r = detectCi({
+    'ci.yml': 'on:\n  pull_request:\n    branches: [main]\njobs:\n  t:\n    steps:\n      - run: npm test\n',
+    'refresh.yml': 'on:\n  schedule:\n    - cron: "0 3 * * *"\n  workflow_dispatch:\njobs:\n  r:\n    steps:\n      - run: uv run crible check-coverage --min-priced 70\n',
+  })
+  assert.deepEqual(cmds(r), ['npm test'])
+  assert.deepEqual(r.ci.workflows, ['ci.yml'])
+})
+
 test("an aggregate gate gets the combined budget, not a single gate's", () => {
   const r = detect('aggregate-check')
   assert.equal(r.gates.find((g) => g.cmd === 'npm run check').timeout_s, 600)
