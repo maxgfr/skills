@@ -25,8 +25,7 @@ Each skill also runs alone: build on an approved plan in `docs/plans/`, verify o
 | Job | Who |
 |---|---|
 | Plan | your session |
-| Build a plan of up to 3 steps | your session (cheaper and faster than a team) |
-| Build a longer plan | `small` per step, `medium` reviews each wave, `medium` retries a step `small` failed twice |
+| Build | your session alone for a short plan; for a long one, `small` or `medium` per step (the session picks), `medium` reviews each wave |
 | Final audit | `large` |
 
 verify never prints a verdict without running the checks, never installs or writes, and the reviewer and the audit reject a skipped test, a silenced checker or an edited gate.
@@ -40,13 +39,12 @@ With no config, every tier is your session's model. To pick models, write `~/.ag
   "claude": {
     "small":  { "model": "haiku",  "effort": "max" },
     "medium": { "model": "sonnet", "effort": "high" },
-    "large":  { "model": "opus",   "effort": "high" },
-    "solo": 3
+    "large":  { "model": "opus",   "effort": "high" }
   }
 }
 ```
 
-A tier is `{ "model", "effort" }` or just a model name. `solo` is the largest plan your session builds alone (`0` always delegates). `attempts` (default `["small", "small", "medium"]`), `review` (`"medium"`) and `audit` (`"large"`) move the other roles.
+A tier is `{ "model", "effort" }` or just a model name. `review` (default `"medium"`) and `audit` (`"large"`) move those two roles; the rest is the session's call.
 
 ## Run only on request
 
