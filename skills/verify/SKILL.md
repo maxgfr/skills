@@ -53,7 +53,7 @@ gate npm test 0
 finding src/a.ts:12 — <issue> · <failure scenario>
 ```
 
-One `gate` line per gate, with the first line of `out` when it failed. One `finding` line per finding.
+One `gate` line per gate, with the one line of `out` that says why when it failed. One `finding` line per finding.
 Without an audit, end with `not audited`. Add one line for anything else not checked (empty diff, model inherited because the tool takes none).
 
 ## Does not
