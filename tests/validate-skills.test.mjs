@@ -30,7 +30,7 @@ function fixtureRepo(lines, extra = () => {}) {
 }
 
 test('the SKILL.md line budget is the one AGENTS.md states', () => {
-  assert.equal(SKILL_LINE_BUDGET, 80)
+  assert.equal(SKILL_LINE_BUDGET, 50)
 })
 
 test('a SKILL.md over the line budget fails; one at the budget passes', () => {
@@ -38,7 +38,7 @@ test('a SKILL.md over the line budget fails; one at the budget passes', () => {
   const at = fixtureRepo(SKILL_LINE_BUDGET)
   try {
     const bad = validate(over).problems
-    assert.ok(bad.some((p) => /past the 80-line budget/.test(p.message)), JSON.stringify(bad))
+    assert.ok(bad.some((p) => /past the 50-line budget/.test(p.message)), JSON.stringify(bad))
     assert.deepEqual(validate(at).problems, [])
   } finally {
     rmSync(over, { recursive: true, force: true })

@@ -41,6 +41,26 @@ function guard(dir, ...extra) {
   }
 }
 
+test('--brief over --since names a cheat in a new file, and says CLEAN once it is gone', () => {
+  const dir = repo()
+  const run = () => {
+    try {
+      return { exitCode: 0, out: execFileSync(process.execPath, [SCRIPT, '--since', 'HEAD', '--brief'], { cwd: dir, encoding: 'utf8' }) }
+    } catch (err) {
+      return { exitCode: err.status, out: err.stdout }
+    }
+  }
+  try {
+    mkdirSync(join(dir, 'tests'))
+    writeFileSync(join(dir, 'tests', 'a.test.ts'), "it('works', () => {})\nit.skip('fails', () => {})\n")
+    assert.deepEqual(run(), { exitCode: 1, out: 'test-skip tests/a.test.ts:2\n' })
+    writeFileSync(join(dir, 'tests', 'a.test.ts'), "it('works', () => {})\n")
+    assert.deepEqual(run(), { exitCode: 0, out: 'CLEAN\n' })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('--since sees a modification to a tracked file', () => {
   const dir = repo()
   try {

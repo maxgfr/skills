@@ -8,7 +8,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 const helpContracts = [
   ['skills/verify/scripts/detect-gates.mjs', ['--cwd', '--run', '--pretty']],
-  ['skills/build/scripts/forbidden-repairs.mjs', ['--since', '--patch', '--plan', '--allow', '--include-untracked', '--pretty']],
+  ['skills/build/scripts/forbidden-repairs.mjs', ['--since', '--patch', '--plan', '--allow', '--include-untracked', '--pretty', '--brief']],
   ['skills/build/scripts/plan-steps.mjs', ['--cwd', '--plan', '--host', '--pretty']],
   ['skills/build/scripts/models.mjs', ['--cwd', '--host']],
   ['skills/verify/scripts/models.mjs', ['--cwd', '--host']],

@@ -17,18 +17,16 @@ const parallel = (thunks) => Promise.all(thunks.map((t) => Promise.resolve().the
 
 const step = (id, dependsOn) => ({
   id,
-  title: `step ${id}`,
   files: [`src/${id}.ts`],
   dependsOn,
   verifyCmd: `npm test -- ${id}`,
-  verifyExpected: 'passes',
   raw: `### ${id} — step ${id}\n- **Verify:** \`npm test -- ${id}\` → passes`,
 })
 const CHAIN = [step('S-001', []), step('S-002', ['S-001']), step('S-003', ['S-002'])]
 const FAN = [step('S-001', []), step('S-002', ['S-001']), step('S-003', ['S-001'])]
 const FAN_WAVES = [['S-001'], ['S-002', 'S-003']]
 
-const IMPL_OK = { done: true, files: ['src/x.ts'], exit: 0, out: 'ok' }
+const IMPL_OK = { exit: 0 }
 const OK = { ok: true, exit: 0, issues: [] }
 const REJECT = { ok: false, exit: 1, issues: ['src/S-001.ts:3 — missing branch'] }
 const TIERS = {
@@ -67,22 +65,19 @@ function makeAgent(script, calls) {
 
 async function run(over, script) {
   const calls = []
-  const args = { cwd: '/wt', planPath: 'docs/plans/x.md', steps: CHAIN, skillDir: '/skill', baseline: 'abc', host: 'claude', tiers: TIERS, ...over }
+  const args = { cwd: '/wt', planPath: 'docs/plans/x.md', steps: CHAIN, skillDir: '/skill', baseline: 'abc', tiers: TIERS, ...over }
   const result = await compiled(args, makeAgent(script, calls), parallel, () => {}, () => {})
   return { result, calls, labels: calls.map((c) => c.label) }
 }
 
-test('a clean build is one line per step and hands off to verify on the plan', async () => {
+test('a clean build is one line per step, and the result carries nothing host-specific', async () => {
   const { result } = await run({}, HAPPY)
-  assert.equal(result.status, 'built')
-  assert.deepEqual(result.lines, ['S-001 done 0 small', 'S-002 done 0 small', 'S-003 done 0 small'])
-  assert.equal(result.next, '/verify docs/plans/x.md')
-})
-
-test('the handoff uses the host syntax it was given, and never guesses one', async () => {
-  assert.equal((await run({ host: 'codex' }, HAPPY)).result.next, '$verify docs/plans/x.md')
-  assert.equal((await run({ namespace: 'maxgfr' }, HAPPY)).result.next, '/maxgfr:verify docs/plans/x.md')
-  assert.equal((await run({ host: null }, HAPPY)).result.next, 'invoke the verify skill with docs/plans/x.md')
+  assert.deepEqual(result, {
+    status: 'built',
+    worktree: '/wt',
+    lines: ['S-001 done 0 small', 'S-002 done 0 small', 'S-003 done 0 small'],
+    stopped_by: null,
+  })
 })
 
 test('a wave of parallel steps shares one reviewer, which reruns every Verify and the guard once', async () => {
@@ -120,7 +115,6 @@ test('a rejected step escalates small, small with the issues, then medium, then 
   assert.equal(result.status, 'blocked')
   assert.match(result.lines[0], /^S-001 blocked 1 medium /)
   assert.deepEqual(result.lines.slice(1), ['S-002 skipped - - needs S-001', 'S-003 skipped - - needs S-002'])
-  assert.equal(result.next, null)
 })
 
 test('in a shared wave only the rejected step is retried, and the retry gets its own review', async () => {
@@ -131,6 +125,13 @@ test('in a shared wave only the rejected step is retried, and the retry gets its
   assert.deepEqual(labels, ['impl:S-001:1', 'review:w1:1', 'impl:S-002:1', 'impl:S-003:1', 'review:w2:1', 'impl:S-002:2', 'review:w2:2'])
   assert.deepEqual(idsIn(calls.find((c) => c.label === 'review:w2:2').prompt), ['S-002'])
   assert.equal(result.status, 'built')
+})
+
+test('a retry carries at most three of the reviewer issues', async () => {
+  const many = { ok: false, exit: 0, issues: ['a:1 — one', 'a:2 — two', 'a:3 — three', 'a:4 — four'] }
+  const { calls } = await run({ steps: [CHAIN[0]] }, { ...HAPPY, 'review:': reviewer((id, n) => (n === 1 ? many : OK)) })
+  const retry = calls.find((c) => c.label === 'impl:S-001:2').prompt
+  assert.ok(retry.includes('a:3 — three') && !retry.includes('a:4 — four'))
 })
 
 test('the medium attempt can land a step the small ones could not', async () => {
@@ -151,7 +152,7 @@ test('the ladder and the reviewer tier come from the config', async () => {
 })
 
 test('a small implementer that reports blocked_by goes straight to the last tier; there it blocks', async () => {
-  const blocked = { ...IMPL_OK, done: false, exit: -1, blocked_by: 'needs a migration' }
+  const blocked = { exit: -1, blocked_by: 'needs a migration' }
   const { result, labels } = await run({ steps: [CHAIN[0]] }, { ...HAPPY, 'impl:S-001': blocked })
   assert.deepEqual(labels, ['impl:S-001:1', 'impl:S-001:3'])
   assert.match(result.lines[0], /^S-001 blocked - medium blocked_by: needs a migration/)
@@ -162,13 +163,12 @@ test('a reviewer that rejects is not overruled by an implementer that reported g
   assert.equal(result.status, 'blocked')
 })
 
-test('an agent that never returned is unproven, buys no retry, and never hands off', async () => {
+test('an agent that never returned is unproven and buys no retry', async () => {
   for (const missing of ['impl:S-001', 'review:']) {
     const { result, labels } = await run({}, { ...HAPPY, [missing]: null })
     assert.match(result.lines[0], /^S-001 unproven .* never returned/)
     assert.equal(labels.filter((l) => l.startsWith('impl:S-001')).length, 1)
     assert.equal(result.status, 'unproven')
-    assert.equal(result.next, null)
   }
 })
 
@@ -212,11 +212,11 @@ test('the reviewer reruns Verify and the guard on the baseline and the plan', as
   assert.ok(review.includes('out=$( (npm test -- S-001) 2>&1 ); e=$?;'))
   // One shell call holds the whole review: every extra tool call re-sends the
   // agent's context, which is where a subagent's tokens go.
-  assert.match(review, /Run this once, from the worktree, as a single shell call:\n\ngit diff abc -- src\/S-001\.ts\nfor f in \$\(git ls-files -o --exclude-standard -- src\/S-001\.ts\)/)
+  assert.match(review, /Run this once, as a single shell call:\n\ngit diff abc -- src\/S-001\.ts\nfor f in \$\(git ls-files -o --exclude-standard -- src\/S-001\.ts\)/)
   assert.ok(review.includes('| tail -15'), 'Verify output is capped')
-  assert.ok(review.includes('node /skill/scripts/forbidden-repairs.mjs --since abc --plan docs/plans/x.md'))
+  assert.ok(review.includes('node /skill/scripts/forbidden-repairs.mjs --brief --since abc --plan docs/plans/x.md'))
   const impl = calls.find((c) => c.label.startsWith('impl:')).prompt
-  assert.ok(impl.includes(CHAIN[0].raw) && impl.includes('YOU MAY NOT'))
+  assert.ok(impl.includes(CHAIN[0].raw) && impl.includes('Never skip, weaken or delete a test'))
 })
 
 test('dispatch.md carries the workflow briefs verbatim', () => {
@@ -228,7 +228,7 @@ test('dispatch.md carries the workflow briefs verbatim', () => {
   const returns = source
     .split('\n')
     .filter((l) => /^(- )?Return JSON:/.test(l))
-    .map((l) => l.replace(/`\s*}?\s*$/, ''))
+    .map((l) => l.replace(/\$\{.*$|`\s*}?\s*$/, ''))
   assert.equal(returns.length, 2)
   for (const line of returns) assert.ok(dispatch.includes(line), `drifted: ${line}`)
 })

@@ -119,22 +119,20 @@ export function parsePlan(text) {
   const fm = frontmatter(text)
   const stepsBlock = section(text, 'Steps') || ''
   const steps = []
-  const headers = [...stepsBlock.matchAll(/^### (S-\d{3})\s*[—–-]\s*(.*)$/gm)]
+  const headers = [...stepsBlock.matchAll(/^### (S-\d{3})\s*[—–-]/gm)]
+  // The title and the expected result already sit in `raw`. Every field here is
+  // copied into the Workflow's args by the most expensive model in the session.
   headers.forEach((h, i) => {
     const from = h.index
     const to = i + 1 < headers.length ? headers[i + 1].index : stepsBlock.length
     const raw = stepsBlock.slice(from, to).trim()
     const b = bullets(raw)
-    const verify = b['verify'] || ''
-    const cmdMatch = /`([^`]+)`/.exec(verify)
-    const arrow = verify.indexOf('→')
+    const cmdMatch = /`([^`]+)`/.exec(b['verify'] || '')
     steps.push({
       id: h[1],
-      title: h[2].trim(),
       files: filesOf(b['files']),
       dependsOn: idsOf(b['depends on']),
       verifyCmd: cmdMatch ? cmdMatch[1].trim() : null,
-      verifyExpected: arrow >= 0 ? verify.slice(arrow + 1).trim() : '',
       raw,
     })
   })

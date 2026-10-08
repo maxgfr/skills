@@ -19,6 +19,7 @@
 //   --allow <rule>         downgrade a rule to a warning (repeatable)
 //   --include-untracked    also scan new files (implied by --since)
 //   --pretty               indent the JSON output
+//   --brief                print `CLEAN`, or one `rule file:line` per violation
 //
 // Exit code: 1 if any violation survives, else 0. JSON report on stdout.
 
@@ -28,11 +29,11 @@ import { relative, resolve, sep } from 'node:path'
 
 const args = process.argv.slice(2)
 if (args.includes('--help')) {
-  process.stdout.write('Usage: node forbidden-repairs.mjs [--since REF | --patch FILE] [--plan FILE] [--allow RULE] [--include-untracked] [--pretty]\n\nExample: node forbidden-repairs.mjs --since HEAD --include-untracked --pretty\n')
+  process.stdout.write('Usage: node forbidden-repairs.mjs [--since REF | --patch FILE] [--plan FILE] [--allow RULE] [--include-untracked] [--pretty | --brief]\n\nExample: node forbidden-repairs.mjs --since HEAD --include-untracked --pretty\n')
   process.exit(0)
 }
 for (let i = 0; i < args.length; i += 1) {
-  if (['--include-untracked', '--pretty'].includes(args[i])) continue
+  if (['--include-untracked', '--pretty', '--brief'].includes(args[i])) continue
   if (['--since', '--patch', '--plan', '--allow'].includes(args[i])) {
     if (!args[i + 1]) {
       process.stderr.write(`${args[i]} needs a value.\n`)
@@ -628,6 +629,12 @@ for (const hit of swallowedErrors(byFile)) {
 
 const violations = findings.filter((f) => f.severity === 'violation')
 const warnings = findings.filter((f) => f.severity === 'warning')
+
+// A reviewer reads this once per wave: the verdict and where, nothing else.
+if (args.includes('--brief')) {
+  process.stdout.write(violations.length ? violations.map((v) => `${v.rule} ${v.file}:${v.line}`).join('\n') + '\n' : 'CLEAN\n')
+  process.exit(violations.length ? 1 : 0)
+}
 
 process.stdout.write(
   JSON.stringify(

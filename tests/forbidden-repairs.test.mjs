@@ -352,3 +352,30 @@ test('line numbers point at the added line, not the hunk header', () => {
   const r = scan(patch('src/user.ts', ' const a = 1', ' const b = 2', '+// @ts-ignore'))
   assert.equal(r.violations[0].line, 12)
 })
+
+// --brief is what a reviewer reads every wave: the verdict and where, no JSON.
+function brief(patchText, extraArgs = []) {
+  try {
+    return { exitCode: 0, out: execFileSync(process.execPath, [SCRIPT, '--brief', ...extraArgs], { input: patchText, encoding: 'utf8' }) }
+  } catch (err) {
+    return { exitCode: err.status, out: err.stdout }
+  }
+}
+
+test('--brief prints CLEAN and exits 0 for an honest fix', () => {
+  const r = brief(patch('src/user.ts', ' const a = 1', '+  if (!email) throw new BadRequest("email required")'))
+  assert.equal(r.out, 'CLEAN\n')
+  assert.equal(r.exitCode, 0)
+})
+
+test('--brief prints one "rule file:line" per violation and exits 1', () => {
+  const r = brief(patch('src/user.ts', ' const a = 1', '+// @ts-ignore', '+const parsed = raw as any'))
+  assert.equal(r.out, 'suppression src/user.ts:11\nany-cast src/user.ts:12\n')
+  assert.equal(r.exitCode, 1)
+})
+
+test('--brief leaves an allowed rule out, so the round is CLEAN', () => {
+  const r = brief(patch('src/user.ts', '+const parsed = raw as any'), ['--allow', 'any-cast'])
+  assert.equal(r.out, 'CLEAN\n')
+  assert.equal(r.exitCode, 0)
+})

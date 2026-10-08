@@ -1,67 +1,34 @@
 # skills
 
-Three process skills for agent-driven engineering: a big model plans, a small
-model writes the code, a medium model reviews it, and a big model audits the
-result. They work on every host with skills (Claude Code, Codex, OpenCode…) and
-never name a model: you map the tiers once, in a config file.
+Three skills for agent-driven engineering, on any host with skills (Claude Code, Codex, OpenCode…): a big model plans, a small model writes the code, a medium model reviews it, a big model audits the result. They speak in tiers, never model names.
 
 ## Install
 
 ```bash
-codex plugin marketplace add maxgfr/skills && codex plugin add maxgfr@maxgfr-skills   # Codex
-npx skills add maxgfr/skills                                                          # any host, editable copies
+npx skills add maxgfr/skills                                                          # any host
+codex plugin marketplace add maxgfr/skills && codex plugin add maxgfr@maxgfr-skills   # Codex plugin
 ```
 
-```text
-/plugin marketplace add maxgfr/skills
-/plugin install maxgfr
-```
-
-The second block is the Claude Code plugin. The agent runs a skill on its own
-when it fits (see [below](#automatic-or-explicit-only)). Pick one path per host. The
-invocation syntax depends on the host: `$verify` in Codex, `/maxgfr:verify` for
-the Claude plugin, `/verify` for a standalone skill. Each skill is
-self-contained, so `npx skills add maxgfr/skills --skill verify` takes just one.
+In Claude Code: `/plugin marketplace add maxgfr/skills`, then `/plugin install maxgfr`. Add `--skill verify` to `npx skills add` to take just one skill.
 
 ## The flow
 
-```text
-$blueprint            # grill → ground → write docs/plans/<date>-<slug>.md → you approve
-$build                # worktree from local HEAD → small implements each step, one medium review per wave
-$verify               # default: the repo's gates once, a few lines → PASS | FAIL | UNPROVEN
-$verify <plan>        # + one large-tier audit of the diff against the plan (also: $verify audit)
+1. **blueprint** plans with you, then asks for one approval (the host's plan mode when it has one).
+2. **build** starts on its own: a worktree from your local `HEAD`, `small` implements each step, one `medium` review per wave.
+3. **verify** follows: the repo's gates once, then a `large` audit of the diff against the plan. You get `PASS`, `FAIL` or `UNPROVEN` and the worktree to merge.
 
-$blueprint auto       # all three from one call, after your approval
-```
+Each skill also runs alone: `verify` with no argument runs only the gates; with a plan path, or `audit [<ref>]`, it adds the audit.
 
-| Role | Tier | Where |
-|---|---|---|
-| Plan | `large` (the session) | `blueprint` |
-| Implement a step | `small` | `build` |
-| Review a wave of steps, rerun every proof and the guard | `medium` | `build` |
-| Escalation after two failed small attempts | `medium` | `build` |
-| Final audit (on request, or after `build … then verify`) | `large` | `verify` |
-
-These are the defaults. Every tier's model and effort, and which tier does
-which job, is configurable: see [Models and effort](#models-and-effort).
-
-A failing step is retried on `small` with the reviewer's issues, then once on
-`medium`, then marked `blocked`. Every guard that has a right answer is a
-dependency-free script: `plan-steps.mjs` (which plan, which waves),
-`forbidden-repairs.mjs` (no skipped test, no suppression, no edited gate),
-`detect-gates.mjs --run` (the repo's own definition of green; a command that an
-aggregate like `npm run check` already runs is skipped).
-
-Output is short on purpose. `build` prints one line per step
-(`S-001 done 0 small`), `verify` prints a verdict, one line per gate and one per
-finding. No report files.
+| Role | Default tier |
+|---|---|
+| Plan | the session |
+| Implement a step | `small`, then `small` with the reviewer's issues, then `medium` |
+| Review a wave, rerun every Verify and the guard | `medium` |
+| Audit the result | `large` |
 
 ## Models and effort
 
-The skills speak in tiers. What a tier means lives in `models.json`: first
-`~/.agents/models.json` (yours, for every repo), then `<repo>/.agents/models.json`,
-which overrides it key by key. Anything absent inherits the session's model
-and effort, so everything works with no config.
+Tiers map to models in `~/.agents/models.json`, overridden key by key by `<repo>/.agents/models.json`. Anything absent inherits the session, so no config is needed.
 
 ```json
 {
@@ -70,63 +37,27 @@ and effort, so everything works with no config.
     "medium": { "model": "sonnet", "effort": "high" },
     "large":  { "model": "opus",   "effort": "high" }
   },
-  "codex": {
-    "small":  { "effort": "medium" },
-    "medium": { "effort": "high" },
-    "large":  { "effort": "xhigh" }
-  }
+  "codex": { "small": { "effort": "medium" }, "large": { "effort": "xhigh" } }
 }
 ```
 
-A tier is `{ "model", "effort" }`, or a bare string for the model alone. The
-`codex` entry above keeps the session's model and only changes the effort. Use
-the names and effort levels your host's subagent tool accepts. The roles can
-move too, per host:
-
-| Key | Default | Meaning |
-|---|---|---|
-| `attempts` | `["small", "small", "medium"]` | `build`: the tier of each try at a step, then `blocked` |
-| `review` | `"medium"` | `build`: the reviewer's tier |
-| `audit` | `"large"` | `verify`: the auditor's tier |
-
-`large` also names the planner, but `blueprint` runs in your session: pick its
-model and effort when you start the session. A typo (`"smal"`, `"modle"`) is an
-error, never a silent default. Check what a repo resolves to with:
-
-```bash
-node skills/build/scripts/models.mjs --cwd . --host claude
-```
+A tier is `{ "model", "effort" }` or a bare model string. Per host, `attempts` (default `["small", "small", "medium"]`), `review` (`"medium"`) and `audit` (`"large"`) move the roles. A typo is an error, never a silent default. Check with `node skills/build/scripts/models.mjs --cwd . --host claude`.
 
 ## Automatic or explicit-only
 
-All three ship **automatic**: each description says when the skill fits, and the
-agent invokes it then. Invoking by name always works. To make a
-skill explicit-only, so that only its name runs it, change the installed copy:
+All three ship automatic: the agent invokes a skill when its description fits, and its name always works. To make one explicit-only, edit the installed copy:
 
-| Host | Shipped, automatic | Explicit-only |
-| --- | --- | --- |
-| Claude Code | no `disable-model-invocation` in `SKILL.md` | add `disable-model-invocation: true` |
-| Codex | `allow_implicit_invocation: true` in `agents/openai.yaml` | set `false` |
-| OpenCode | `metadata.opencode/autoinvoke: 'true'` in `SKILL.md` | set `'false'` |
+| Host | Explicit-only |
+| --- | --- |
+| Claude Code | add `disable-model-invocation: true` to `SKILL.md` |
+| Codex | set `allow_implicit_invocation: false` in `agents/openai.yaml` |
+| OpenCode | set `metadata.opencode/autoinvoke: 'false'`, or deny the skill under `permission.skill` in `opencode.json` |
 
-Claude Code also accepts `"skillOverrides": { "verify": "user-invocable-only" }`
-in `settings.json`, but plugin installs ignore it. OpenCode V1 reads no
-`autoinvoke` metadata. To force explicit-only there, set
-`"permission": { "skill": { "blueprint": "deny", "build": "deny", "verify": "deny" } }`
-in `opencode.json`; the explicit `/name` commands keep working. Updating or
-reinstalling restores the shipped default.
+Updating or reinstalling restores the default.
 
 ## Development
 
-```bash
-npm ci
-npm run check   # validate (frontmatter, budgets, dead references, no model names) + tests + plugin versions
-```
-
-`SKILL.md` files stay under 80 lines, and `npm run validate` fails if a model
-name appears anywhere under `skills/`. Releases come from conventional commits
-on `main` via semantic-release. Adding a skill: [CONTRIBUTING.md](./CONTRIBUTING.md).
-Writing one well: [AGENTS.md](./AGENTS.md).
+`npm ci && npm run check`. See [AGENTS.md](./AGENTS.md) and [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## License
 

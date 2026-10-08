@@ -17,8 +17,6 @@ const steps = Array.isArray(A.steps) ? A.steps : []
 const waves = Array.isArray(A.waves) && A.waves.length ? A.waves : steps.map((s) => [s.id])
 const skillDir = A.skillDir || '.'
 const baseline = A.baseline || 'HEAD'
-const host = A.host || null
-const namespace = A.namespace || null
 const tiers = A.tiers || {}
 // By default: small, small with the reviewer's issues, then medium once. Then blocked.
 const attempts = Array.isArray(tiers.attempts) && tiers.attempts.length ? tiers.attempts : ['small', 'small', 'medium']
@@ -26,29 +24,19 @@ const REVIEW_TIER = tiers.review || 'medium'
 // The agent() options for a tier: what is unset is inherited from the session.
 const on = (tier) => ({ model: (tiers[tier] && tiers[tier].model) || undefined, effort: (tiers[tier] && tiers[tier].effort) || undefined })
 
-function skillCall(name, rest) {
-  if (host === 'codex') return `$${name} ${rest}`
-  if (host === 'claude') return `/${namespace ? `${namespace}:` : ''}${name} ${rest}`
-  return `invoke the ${name} skill with ${rest}`
-}
-
 const byId = new Map(steps.map((s) => [s.id, s]))
 const state = new Map(steps.map((s) => [s.id, { id: s.id, status: 'pending', exit: null, tier: null, notes: null }]))
 let stoppedBy = null
 
-const CONTEXT = `Worktree (the only place you may write; run every command here; do not commit): ${cwd}
-Plan: ${planPath}`
+const CONTEXT = `Work and run commands only in ${cwd}; do not commit.`
 
-const FORBIDDEN = `YOU MAY NOT: skip, delete, weaken or .only a test; change an expected value to match the output; add @ts-ignore, @ts-expect-error, eslint-disable, # type: ignore or # noqa; widen a type to any; swallow an error in an empty catch; edit a gate command, CI workflow, Makefile target or the plan; commit. If the step needs one of those, stop and set blocked_by.`
+const FORBIDDEN = `Never skip, weaken or delete a test, fit an expected value to the output, add a suppression comment, widen a type to any, swallow an error, or edit a gate, CI or the plan; if the step needs that, stop and return blocked_by.`
 
 const IMPL_SCHEMA = {
   type: 'object',
-  required: ['done', 'files', 'exit', 'out'],
+  required: ['exit'],
   properties: {
-    done: { type: 'boolean' },
-    files: { type: 'array', items: { type: 'string' } },
     exit: { type: 'number' },
-    out: { type: 'string' },
     blocked_by: { type: 'string' },
   },
 }
@@ -63,12 +51,12 @@ const REVIEW_SCHEMA = {
       type: 'array',
       items: {
         type: 'object',
-        required: ['id', 'ok', 'exit', 'issues'],
+        required: ['id', 'ok', 'exit'],
         properties: {
           id: { type: 'string' },
           ok: { type: 'boolean' },
           exit: { type: 'number' },
-          issues: { type: 'array', maxItems: 5, items: { type: 'string' } },
+          issues: { type: 'array', maxItems: 3, items: { type: 'string' } },
         },
       },
     },
@@ -78,16 +66,13 @@ const REVIEW_SCHEMA = {
 function implBrief(step, feedback) {
   return `${CONTEXT}
 
-Implement exactly this step and nothing else:
+Implement this step, nothing more:
 
 ${step.raw}
 
-- Touch only the files under Files:. Open a file before editing it; never guess a path or a symbol.
-- Use as few tool calls as you can: open only what the step names, make the change, run Verify once.
-- Then run, from the worktree: ${step.verifyCmd}  (expected: ${step.verifyExpected || 'see the step'})
-- Return JSON: done (Verify exited 0 and every Change bullet is in), files (relative paths), exit (-1 if it did not finish), out (at most 10 lines of its output).
-
-${FORBIDDEN}${feedback ? `\n\nThe previous attempt was rejected. Fix every item:\n${feedback}` : ''}`
+Touch only its Files, run its Verify once, use few tool calls.
+${FORBIDDEN}
+Return JSON: exit (Verify's exit code, -1 if not run), blocked_by (only if you stopped).${feedback ? `\n\nThe previous attempt was rejected. Fix every item:\n${feedback}` : ''}`
 }
 
 // One reviewer per round of a wave: it judges every step just implemented,
@@ -101,24 +86,24 @@ function reviewScript(list) {
     `git diff ${baseline} -- ${paths}`,
     `for f in $(git ls-files -o --exclude-standard -- ${paths}); do git diff --no-index /dev/null "$f"; done`,
     ...list.map((s) => `out=$( (${s.verifyCmd}) 2>&1 ); e=$?; printf '%s\\n' "$out" | tail -15; echo "${s.id} exit=$e"`),
-    `node ${skillDir}/scripts/forbidden-repairs.mjs --since ${baseline}${planPath ? ` --plan ${planPath}` : ''}`,
+    `node ${skillDir}/scripts/forbidden-repairs.mjs --brief --since ${baseline}${planPath ? ` --plan ${planPath}` : ''}`,
   ].join('\n')
 }
 
 function reviewBrief(ids) {
   const list = ids.map((id) => byId.get(id))
-  return `${CONTEXT}
+  return `${CONTEXT} Edit nothing.
 
-Review the change for these steps. Edit nothing.
+Review these steps:
 
 ${list.map((s) => s.raw).join('\n\n')}
 
-Run this once, from the worktree, as a single shell call:
+Run this once, as a single shell call:
 
 ${reviewScript(list)}
 
-It prints the diff (new files included), each step's Verify output ending "S-xxx exit=N", then the guard's JSON. Open a file only if the diff leaves a doubt. Per step: every Change bullet present, Preserve untouched, no file outside its Files:, no debug output or dead code.
-Return JSON: guard (the guard's "verdict"), violations (its violations as "rule file:line"), steps (one per step: id, ok (the checks above hold), exit (its exit=N), issues (at most 5, each "file:line — problem")).`
+Output: the diff, each Verify ending "S-xxx exit=N", then the guard (CLEAN, or "rule file:line" lines). Per step: every Change in, Preserve kept, nothing outside its Files, no debug or dead code. Open a file only if the diff leaves a doubt.
+Return JSON: guard (CLEAN or FORBIDDEN), violations (the guard's lines), steps (per step: id, ok, exit (its exit=N), issues (at most 3, "file:line — problem")).`
 }
 
 // An agent that never returned judged nothing: the step is `unproven`, it buys
@@ -164,7 +149,7 @@ async function runWave(wave, w) {
         // One forbidden hunk anywhere stops the build: a step landed by
         // silencing a checker poisons every step after it.
         const all = rev.violations || []
-        await agent(`${CONTEXT}\n\nRevert exactly these forbidden hunks and nothing else: ${all.join(', ') || 'unspecified'}. Use \`git checkout -p\` or restore and re-apply the clean hunks. Return the reverted files.`, {
+        await agent(`${CONTEXT}\n\nRevert exactly these forbidden hunks and nothing else: ${all.join(', ') || 'unspecified'}. Use \`git checkout -p\` or restore and re-apply the clean hunks.`, {
           ...on(attempts[0]),
           label: `revert:w${w}`,
           phase: 'Steps',
@@ -185,7 +170,7 @@ async function runWave(wave, w) {
             Object.assign(rec, { status: 'done', notes: null })
             continue
           }
-          const issues = (v.issues || []).slice(0, 5).map((x) => `- ${x}`)
+          const issues = (v.issues || []).slice(0, 3).map((x) => `- ${x}`)
           if (v.exit !== 0) issues.unshift(`- Verify exited ${v.exit} for the reviewer`)
           feedback.set(id, issues.join('\n') || '- rejected without detail')
           rec.notes = feedback.get(id).replace(/\n/g, ' ')
@@ -225,10 +210,10 @@ const status = stoppedBy || table.some((r) => r.status === 'blocked')
       ? 'built'
       : 'blocked'
 
+// The orchestrator runs verify itself on `built`: it knows its own host.
 return {
   status,
   worktree: cwd,
   lines: table.map((r) => [r.id, r.status, r.exit ?? '-', r.tier ?? '-', r.notes || ''].join(' ').trim()),
   stopped_by: stoppedBy,
-  next: status === 'built' ? skillCall('verify', planPath) : null,
 }

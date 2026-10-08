@@ -42,7 +42,7 @@ export function extractReferences(body) {
 // A model reads the whole SKILL.md every time the skill triggers. Past this
 // many lines the excess belongs in references/, loaded only when a phase needs
 // it — AGENTS.md says so, and a budget nobody enforces is a budget nobody keeps.
-export const SKILL_LINE_BUDGET = 80
+export const SKILL_LINE_BUDGET = 50
 
 // Model families the skills must never name. Matched only here, so the skills
 // themselves stay free of every name on the list.

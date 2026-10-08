@@ -29,14 +29,13 @@ test('parsePlan reads the status and only the step fields the build uses', () =>
   assert.equal(plan.status, 'approved')
   assert.equal(plan.steps.length, 3)
   const s2 = plan.steps[1]
-  assert.deepEqual(Object.keys(s2), ['id', 'title', 'files', 'dependsOn', 'verifyCmd', 'verifyExpected', 'raw'])
+  assert.deepEqual(Object.keys(s2), ['id', 'files', 'dependsOn', 'verifyCmd', 'raw'])
   assert.equal(s2.id, 'S-002')
-  assert.equal(s2.title, 'Wire the middleware')
   assert.deepEqual(s2.files, ['src/limit/middleware.ts', 'src/api/router.ts'])
   assert.deepEqual(s2.dependsOn, ['S-001'])
   assert.equal(s2.verifyCmd, 'npx vitest run tests/api/limit.test.ts')
-  assert.equal(s2.verifyExpected, '2 passed')
-  assert.match(s2.raw, /^### S-002[\s\S]*429/)
+  // The title and the expected result travel in raw, not twice.
+  assert.match(s2.raw, /^### S-002 — Wire the middleware[\s\S]*429[\s\S]*→ 2 passed/)
 })
 
 test('the schedule carries the tiers for the host: model, effort, ladder, reviewer', () => {
