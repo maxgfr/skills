@@ -11,7 +11,8 @@
 //       "large":  { "model": "…", "effort": "…" },
 //       "attempts": ["small", "small", "medium"],     // build: tier of each try at a step
 //       "review": "medium",                            // build: the reviewer's tier
-//       "audit": "large"                               // verify: the auditor's tier
+//       "audit": "large",                              // verify: the auditor's tier
+//       "solo": 3                                      // build: plans up to this many steps are built by the session itself
 //   } }
 //
 // Anything absent keeps the default below. A model or effort that is absent,
@@ -26,7 +27,7 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export const TIERS = ['small', 'medium', 'large']
-const ROLES = { attempts: ['small', 'small', 'medium'], review: 'medium', audit: 'large' }
+const ROLES = { attempts: ['small', 'small', 'medium'], review: 'medium', audit: 'large', solo: 3 }
 
 const pick = (v) => (typeof v === 'string' && v.trim() && v.trim() !== 'inherit' ? v.trim() : null)
 
@@ -58,7 +59,7 @@ function read(file) {
 }
 
 export function resolveTiers(cwd, host, home = homedir()) {
-  const out = { small: tier(), medium: tier(), large: tier(), attempts: ROLES.attempts.slice(), review: ROLES.review, audit: ROLES.audit }
+  const out = { small: tier(), medium: tier(), large: tier(), attempts: ROLES.attempts.slice(), review: ROLES.review, audit: ROLES.audit, solo: ROLES.solo }
   if (!host) return out
   for (const file of [join(home, '.agents', 'models.json'), join(cwd, '.agents', 'models.json')]) {
     const config = read(file)
@@ -72,6 +73,10 @@ export function resolveTiers(cwd, host, home = homedir()) {
         if (!Array.isArray(value) || !value.length) throw new Error(`${where} must be a non-empty list of tiers.`)
         out.attempts = value.map((t, i) => tierName(t, `${where}[${i}]`))
       } else if (key === 'review' || key === 'audit') out[key] = tierName(value, where)
+      else if (key === 'solo') {
+        if (!Number.isInteger(value) || value < 0) throw new Error(`${where} must be a whole number of steps (0 always delegates).`)
+        out.solo = value
+      }
       else throw new Error(`${where} is not a known key (${[...TIERS, ...Object.keys(ROLES)].join(', ')}).`)
     }
   }

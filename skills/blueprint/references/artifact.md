@@ -3,7 +3,6 @@
 ```markdown
 ---
 status: awaiting-approval
-fixed_point: <commit SHA, plus "dirty" if the tree was>
 ---
 
 # <Subject>

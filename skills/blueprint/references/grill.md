@@ -5,4 +5,4 @@ Ask every decision whose prerequisites are settled in one round, most consequent
 **Q-001 — <title>**: <the decision and its options>
 → <your recommendation, and why>
 
-Never ask what the repo answers. Each answer goes into `## Locked constraints`; "your call" locks your recommendation, marked delegated. Stop when nothing is open.
+Each answer goes into `## Locked constraints`; "your call" locks your recommendation, marked delegated. Stop when nothing is open.

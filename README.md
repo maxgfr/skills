@@ -1,59 +1,56 @@
 # skills
 
-Three skills for agent-driven engineering, on any host with skills (Claude Code, Codex, OpenCode…): a big model plans, a small model writes the code, a medium model reviews it, a big model audits the result. They speak in tiers, never model names.
+Three skills that take a change from plan to proof, on any agent that reads skills (Claude Code, Codex, OpenCode…):
+
+- **blueprint** plans the change with you and asks for one approval.
+- **build** implements it in a git worktree, then hands off to verify.
+- **verify** runs your repo's own gates and audits the diff: `PASS`, `FAIL` or `UNPROVEN`.
 
 ## Install
 
 ```bash
-npx skills add maxgfr/skills                                                          # any host
-codex plugin marketplace add maxgfr/skills && codex plugin add maxgfr@maxgfr-skills   # Codex plugin
+npx skills add maxgfr/skills
 ```
 
-In Claude Code: `/plugin marketplace add maxgfr/skills`, then `/plugin install maxgfr`. Add `--skill verify` to `npx skills add` to take just one skill.
+That works everywhere. Add `--skill verify` to take a single skill. Native plugins exist too: `/plugin marketplace add maxgfr/skills` then `/plugin install maxgfr` in Claude Code, `codex plugin marketplace add maxgfr/skills` then `codex plugin add maxgfr@maxgfr-skills` in Codex.
 
-## The flow
+## Use
 
-1. **blueprint** plans with you, then asks for one approval (the host's plan mode when it has one).
-2. **build** starts on its own: a worktree from your local `HEAD`, `small` implements each step, one `medium` review per wave.
-3. **verify** follows: the repo's gates once, then a `large` audit of the diff against the plan. You get `PASS`, `FAIL` or `UNPROVEN` and the worktree to merge.
+Work as usual: open your agent's plan mode, or just describe the change. blueprint takes over, asks its questions and writes the plan; approving it (leaving plan mode) is the only thing you do. build and verify follow on their own, and you get one line per step, a verdict, and the worktree to merge.
 
-Each skill also runs alone: `verify` with no argument runs only the gates; with a plan path, or `audit [<ref>]`, it adds the audit.
+Each skill also runs alone: build on an approved plan in `docs/plans/`, verify on any finished work (gates only), or verify with a plan path to add the audit.
 
-| Role | Default tier |
+## How the work is split
+
+| Job | Who |
 |---|---|
-| Plan | the session |
-| Implement a step | `small`, then `small` with the reviewer's issues, then `medium` |
-| Review a wave, rerun every Verify and the guard | `medium` |
-| Audit the result | `large` |
+| Plan | your session |
+| Build a plan of up to 3 steps | your session (cheaper and faster than a team) |
+| Build a longer plan | `small` per step, `medium` reviews each wave, `medium` retries a step `small` failed twice |
+| Final audit | `large` |
 
-## Models and effort
+A script, not the model, decides the order, checks that no test was skipped, no checker silenced and no gate edited, and runs the gates.
 
-Tiers map to models in `~/.agents/models.json`, overridden key by key by `<repo>/.agents/models.json`. Anything absent inherits the session, so no config is needed.
+## Models (optional)
+
+With no config, every tier is your session's model. To pick models, write `~/.agents/models.json` (or `<repo>/.agents/models.json`, which wins key by key), with one entry per agent:
 
 ```json
 {
   "claude": {
     "small":  { "model": "haiku",  "effort": "max" },
     "medium": { "model": "sonnet", "effort": "high" },
-    "large":  { "model": "opus",   "effort": "high" }
-  },
-  "codex": { "small": { "effort": "medium" }, "large": { "effort": "xhigh" } }
+    "large":  { "model": "opus",   "effort": "high" },
+    "solo": 3
+  }
 }
 ```
 
-A tier is `{ "model", "effort" }` or a bare model string. Per host, `attempts` (default `["small", "small", "medium"]`), `review` (`"medium"`) and `audit` (`"large"`) move the roles. A typo is an error, never a silent default. Check with `node skills/build/scripts/models.mjs --cwd . --host claude`.
+A tier is `{ "model", "effort" }` or just a model name. `solo` is the largest plan your session builds alone (`0` always delegates). `attempts`, `review` and `audit` move the other roles. A typo is an error, never a silent default.
 
-## Automatic or explicit-only
+## Run only on request
 
-All three ship automatic: the agent invokes a skill when its description fits, and its name always works. To make one explicit-only, edit the installed copy:
-
-| Host | Explicit-only |
-| --- | --- |
-| Claude Code | add `disable-model-invocation: true` to `SKILL.md` |
-| Codex | set `allow_implicit_invocation: false` in `agents/openai.yaml` |
-| OpenCode | set `metadata.opencode/autoinvoke: 'false'`, or deny the skill under `permission.skill` in `opencode.json` |
-
-Updating or reinstalling restores the default.
+All three run on their own when they fit. To keep one for explicit calls: add `disable-model-invocation: true` to its `SKILL.md` (Claude Code), set `allow_implicit_invocation: false` in `agents/openai.yaml` (Codex), or set `metadata.opencode/autoinvoke: 'false'` (OpenCode).
 
 ## Development
 

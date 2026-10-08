@@ -215,12 +215,16 @@ export function schedule(cwd, given, host = null) {
     }
   const w = waves(plan.steps)
   if (w.error) return { ok: false, planPath: rel, error: w.error }
+  const tiers = resolveTiers(cwd, host)
+  // A short plan costs less in the session than in a team of subagents, each
+  // of which rereads the repo: the session builds it, verify's audit reviews it.
   return {
     ok: true,
     planPath: rel,
+    mode: plan.steps.length <= tiers.solo ? 'solo' : 'delegate',
     steps: plan.steps,
     waves: w.waves,
-    tiers: resolveTiers(cwd, host),
+    tiers,
   }
 }
 

@@ -102,7 +102,7 @@ Run this once, as a single shell call:
 
 ${reviewScript(list)}
 
-Output: the diff, each Verify ending "S-xxx exit=N", then the guard (CLEAN, or "rule file:line" lines). Per step: every Change in, Preserve kept, nothing outside its Files, no debug or dead code. Open a file only if the diff leaves a doubt.
+Per step: every Change in, Preserve kept, nothing outside its Files, no debug or dead code. Open a file only if the diff leaves a doubt.
 Return JSON: guard (CLEAN or FORBIDDEN), violations (the guard's lines), steps (per step: id, ok, exit (its exit=N), issues (at most 3, "file:line — problem")).`
 }
 

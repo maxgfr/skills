@@ -13,7 +13,7 @@ import { resolveTiers } from '../skills/build/scripts/models.mjs'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const SCRIPT = join(root, 'skills', 'build', 'scripts', 'models.mjs')
 const NONE = { model: null, effort: null }
-const DEFAULTS = { small: NONE, medium: NONE, large: NONE, attempts: ['small', 'small', 'medium'], review: 'medium', audit: 'large' }
+const DEFAULTS = { small: NONE, medium: NONE, large: NONE, attempts: ['small', 'small', 'medium'], review: 'medium', audit: 'large', solo: 3 }
 
 function sandbox(repoConfig, userConfig) {
   const dir = mkdtempSync(join(tmpdir(), 'models-'))
@@ -69,6 +69,15 @@ test('the repo file overrides the user file key by key', () => {
   }
 })
 
+test('solo takes a whole number of steps, and 0 always delegates', () => {
+  const s = sandbox({ alpha: { solo: 0 } }, undefined)
+  try {
+    assert.equal(resolveTiers(s.repo, 'alpha', s.home).solo, 0)
+  } finally {
+    s.done()
+  }
+})
+
 test('empty and "inherit" resolve to null', () => {
   const s = sandbox({ alpha: { small: '', medium: 'inherit', large: { model: 'inherit', effort: '' } } }, undefined)
   try {
@@ -87,6 +96,8 @@ test('a typo or a bad value is an error that names the file and the key, never a
     [{ alpha: { attempts: ['small', 'huge'] } }, /alpha\.attempts\[1\] must be one of small, medium, large/],
     [{ alpha: { attempts: [] } }, /non-empty list/],
     [{ alpha: { review: 'tiny' } }, /alpha\.review must be one of/],
+    [{ alpha: { solo: -1 } }, /alpha\.solo must be a whole number/],
+    [{ alpha: { solo: '3' } }, /alpha\.solo must be a whole number/],
   ]
   for (const [config, error] of cases) {
     const s = sandbox(config, undefined)

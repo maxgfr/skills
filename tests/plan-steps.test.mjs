@@ -50,6 +50,11 @@ test('the schedule carries the tiers for the host: model, effort, ladder, review
     assert.equal(r.tiers.review, 'medium')
     assert.deepEqual(r.tiers.small, { model: 'tiny', effort: 'max' })
     assert.deepEqual(r.tiers.medium, { model: 'mid', effort: null })
+    // Three steps sit at the default solo threshold: the session builds them.
+    assert.equal(r.mode, 'solo')
+    writeFileSync(join(dir, '.agents', 'models.json'), JSON.stringify({ alpha: { solo: 2 } }))
+    assert.equal(cli(dir, '--plan', 'plan.md', '--host', 'alpha').mode, 'delegate')
+    writeFileSync(join(dir, '.agents', 'models.json'), JSON.stringify({ alpha: { small: { model: 'tiny', effort: 'max' }, medium: 'mid' } }))
     // No host: every tier inherits the session's model and effort.
     assert.deepEqual(cli(dir, '--plan', 'plan.md').tiers.small, { model: null, effort: null })
     // A broken config is a one-line refusal, not a build on the wrong models.
