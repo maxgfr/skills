@@ -4,4 +4,4 @@ interface:
   default_prompt: "Use $verify to check this completed work."
 
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true

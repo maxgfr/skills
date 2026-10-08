@@ -4,4 +4,4 @@ interface:
   default_prompt: "Use $blueprint to plan this repository change."
 
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true

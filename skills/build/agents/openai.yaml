@@ -4,4 +4,4 @@ interface:
   default_prompt: "Use $build to implement the approved plan."
 
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true

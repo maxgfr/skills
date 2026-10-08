@@ -7,7 +7,7 @@ import { validate } from '../scripts/validate-skills.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
-test('the Codex plugin exposes explicit-only public skills and registers no hooks', () => {
+test('the Codex plugin exposes on-request public skills and registers no hooks', () => {
   const manifestPath = join(root, '.codex-plugin', 'plugin.json')
   assert.ok(existsSync(manifestPath), 'missing .codex-plugin/plugin.json')
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
@@ -24,11 +24,15 @@ test('the Codex plugin exposes explicit-only public skills and registers no hook
   for (const skill of ['blueprint', 'build', 'verify']) {
     const skillMd = readFileSync(join(root, 'skills', skill, 'SKILL.md'), 'utf8')
     const metadata = readFileSync(join(root, 'skills', skill, 'agents', 'openai.yaml'), 'utf8')
-    assert.match(skillMd, /^disable-model-invocation:\s*true$/m)
+    // Model-invocable, but the description restricts it to explicit requests.
+    assert.doesNotMatch(skillMd, /^disable-model-invocation:\s*true\s*$/m)
+    assert.doesNotMatch(skillMd, /opencode\/autoinvoke:\s*['"]?false['"]?\s*$/m)
+    assert.match(skillMd, /^\s{2}opencode\/autoinvoke:\s*'true'$/m)
+    assert.match(skillMd, new RegExp(`^description: Use only when the user explicitly asks for ${skill} `, 'm'))
     assert.match(metadata, /^interface:$/m)
     assert.match(metadata, /^\s{2}display_name:\s*"[^"]+"$/m)
     assert.match(metadata, /^\s{2}short_description:\s*".{25,64}"$/m)
-    assert.match(metadata, /^\s{2}allow_implicit_invocation:\s*false$/m)
+    assert.match(metadata, /^policy:\s*\n(?:[ \t]+[^\n]*\n)*?[ \t]+allow_implicit_invocation:\s*true\s*$/m)
     assert.ok(metadata.includes(`$${skill}`), `${skill} does not advertise its explicit invocation`)
   }
 })

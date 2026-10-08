@@ -1,3 +1,10 @@
+# [2.1.0](https://github.com/maxgfr/skills/compare/v2.0.2...v2.1.0) (2026-10-08)
+
+
+### Features
+
+* **skills:** let the agent invoke blueprint, build and verify on request ([08e063f](https://github.com/maxgfr/skills/commit/08e063fc16e0dcb62617625e7d6228ac33636c0a))
+
 ## [2.0.2](https://github.com/maxgfr/skills/compare/v2.0.1...v2.0.2) (2026-09-09)
 
 

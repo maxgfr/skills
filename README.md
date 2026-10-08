@@ -17,7 +17,8 @@ npx skills add maxgfr/skills                                                    
 /plugin install maxgfr
 ```
 
-The second block is the Claude Code plugin. Pick one path per host. The
+The second block is the Claude Code plugin. The skills run when you ask for
+them (see [below](#on-request-or-explicit-only)). Pick one path per host. The
 invocation syntax depends on the host: `$verify` in Codex, `/maxgfr:verify` for
 the Claude plugin, `/verify` for a standalone skill. Each skill is
 self-contained, so `npx skills add maxgfr/skills --skill verify` takes just one.
@@ -73,20 +74,21 @@ model, every tier inherits and the skill says so once. Check a resolution with:
 node skills/build/scripts/models.mjs --cwd . --host claude
 ```
 
-## Manual or automatic
+## On request or explicit-only
 
-All three ship **explicit-only**: they run when you invoke them by name. To let
-the agent pick one, change the installed copy:
+All three ship **on request**: the agent may call one, but each description
+restricts it to when you ask for it. Invoking by name always works. To make a
+skill explicit-only, so that only its name runs it, change the installed copy:
 
-| Host | Shipped, manual | Automatic |
+| Host | Shipped, on request | Explicit-only |
 | --- | --- | --- |
-| Claude Code | `disable-model-invocation: true` in `SKILL.md` | delete the line, or set `false` |
-| Codex | `allow_implicit_invocation: false` in `agents/openai.yaml` | set `true` |
-| OpenCode | `metadata.opencode/autoinvoke: 'false'` in `SKILL.md` | delete the entry, or set `'true'` |
+| Claude Code | no `disable-model-invocation` in `SKILL.md` | add `disable-model-invocation: true` |
+| Codex | `allow_implicit_invocation: true` in `agents/openai.yaml` | set `false` |
+| OpenCode | `metadata.opencode/autoinvoke: 'true'` in `SKILL.md` | set `'false'` |
 
-Claude Code also accepts `"skillOverrides": { "verify": "on" }` in
-`settings.json`, but plugin installs ignore it. OpenCode V1 reads no
-`autoinvoke` metadata. To keep the skills manual there, set
+Claude Code also accepts `"skillOverrides": { "verify": "user-invocable-only" }`
+in `settings.json`, but plugin installs ignore it. OpenCode V1 reads no
+`autoinvoke` metadata. To force explicit-only there, set
 `"permission": { "skill": { "blueprint": "deny", "build": "deny", "verify": "deny" } }`
 in `opencode.json`; the explicit `/name` commands keep working. Updating or
 reinstalling restores the shipped default.
