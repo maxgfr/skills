@@ -1,3 +1,26 @@
+# [3.0.0](https://github.com/maxgfr/skills/compare/v2.1.0...v3.0.0) (2026-10-08)
+
+
+* feat!: minimal skills on abstract model tiers ([d72e240](https://github.com/maxgfr/skills/commit/d72e2407e1b10c363a3ef058d89e7060448faf00))
+
+
+### Bug Fixes
+
+* **build:** keep a forbidden-repair stop to one short line ([05b2657](https://github.com/maxgfr/skills/commit/05b265774385eed43bf0b698fc0935c05ee5d8b6))
+* **verify:** show the line that explains a failed gate ([d751eae](https://github.com/maxgfr/skills/commit/d751eae8ee668a777734322472d75aa85ffd130e))
+
+
+### Features
+
+* **verify:** gates only by default, skip gates an aggregate already runs ([19cfdab](https://github.com/maxgfr/skills/commit/19cfdabe840cdca7f281771299bdee89f08557d6))
+
+
+### BREAKING CHANGES
+
+* `build peer`, `blueprint crosscheck`, `blueprint grill`,
+`verify light|normal|deep|report|crosscheck` and the verify/build config
+files are gone. Map tiers to models in .agents/models.json instead.
+
 # [2.1.0](https://github.com/maxgfr/skills/compare/v2.0.2...v2.1.0) (2026-10-08)
 
 
