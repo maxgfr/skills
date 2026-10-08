@@ -9,8 +9,8 @@ metadata:
 
 # verify
 
-Run the repository's gates, then have one `large`-tier auditor read the change.
-The output is a verdict and its evidence. Paths are relative to this skill's directory.
+By default, run the repository's gates once and print the verdict: cheap, a few
+lines. On request, one `large`-tier auditor also reads the change. Paths are relative to this skill's directory.
 
 ## Laws
 
@@ -20,13 +20,18 @@ The output is a verdict and its evidence. Paths are relative to this skill's dir
 
 ## Invocations
 
-`$verify` (Codex), `/maxgfr:verify` (Claude plugin), `/verify` (standalone). Arguments:
-none, `<plan>` (an existing `.md` path: the promise to hold the change to), `<ref>` (a fixed point: `main`, a SHA, `HEAD~3`).
+`$verify` (Codex), `/maxgfr:verify` (Claude plugin), `/verify` (standalone).
+
+| Arguments | Does |
+|---|---|
+| none | **Default.** Gates only. No diff read, no agent. |
+| `<plan>` (an existing `.md`) | Gates, then the audit holds the change to that plan. |
+| `audit [<ref>]` | Gates, then the audit, with no plan. `<ref>` (`main`, a SHA) fixes the diff base. |
 
 ## Steps
 
-1. **Diff.** With `<ref>`: `git diff <ref>`. With a dirty tree: `git diff HEAD`. With a clean tree: `git diff $(git merge-base HEAD origin/HEAD)`, or `main` when `origin/HEAD` is unset. Always add the untracked files from `git status --porcelain`. A ref that does not resolve: say so and stop.
-2. **Gates.** `node scripts/detect-gates.mjs --cwd <repo> --run`. It runs every detected gate once and prints compact JSON (`ok`, and for each gate `cmd`, `exit`, and `out` on failure). Do not rerun the gates yourself.
+1. **Gates.** `node scripts/detect-gates.mjs --cwd <repo> --run`. It runs each detected gate once (gates an aggregate already runs are skipped) and prints compact JSON: `ok`, and per gate `cmd`, `exit`, and `out` on failure. Do not rerun them. With no arguments, stop here.
+2. **Diff.** With `<ref>`: `git diff <ref>`. With a dirty tree: `git diff HEAD`. With a clean tree: `git diff $(git merge-base HEAD origin/HEAD)`, or `main` when `origin/HEAD` is unset. Always add the untracked files from `git status --porcelain`. A ref that does not resolve: say so and stop.
 3. **Audit.** `node scripts/models.mjs --cwd <repo> --host <host>`, where `host` is the CLI you run in. Pass it, never guess it. Dispatch one subagent with model `large` (`null` means inherit) and the brief in `references/audit.md`. With no subagent tool, do the audit yourself and mark the output `inline`. With an empty diff, skip the audit.
 
 ## Verdict
@@ -35,7 +40,7 @@ none, `<plan>` (an existing `.md` path: the promise to hold the change to), `<re
 |---|---|
 | `FAIL` | A blocking gate failed (`ok: false`), or the audit returned a finding. |
 | `UNPROVEN` | No gate ran (`ok: null`), or the auditor never returned. Not a pass. |
-| `PASS` | Every blocking gate passed and the audit found nothing. |
+| `PASS` | Every blocking gate passed, and the audit, if it ran, found nothing. |
 
 ## Output
 
@@ -49,7 +54,7 @@ finding src/a.ts:12 — <issue> · <failure scenario>
 ```
 
 One `gate` line per gate, with the first line of `out` when it failed. One `finding` line per finding.
-Add a line for anything not checked (no plan, audit skipped, model inherited because the tool takes none).
+Without an audit, end with `not audited`. Add one line for anything else not checked (empty diff, model inherited because the tool takes none).
 
 ## Does not
 

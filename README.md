@@ -27,7 +27,8 @@ self-contained, so `npx skills add maxgfr/skills --skill verify` takes just one.
 ```text
 $blueprint            # grill → ground → write docs/plans/<date>-<slug>.md → you approve
 $build                # worktree → per step: small implements, medium reviews + reruns Verify + guard
-$verify <plan>        # repo gates once, then one large-tier audit of the diff → PASS | FAIL | UNPROVEN
+$verify               # default: the repo's gates once, a few lines → PASS | FAIL | UNPROVEN
+$verify <plan>        # + one large-tier audit of the diff against the plan (also: $verify audit)
 
 $blueprint auto       # all three from one call, after your approval
 ```
@@ -38,13 +39,14 @@ $blueprint auto       # all three from one call, after your approval
 | Implement a step | `small` | `build` |
 | Review a step, rerun its proof | `medium` | `build` |
 | Escalation after two failed small attempts | `medium` | `build` |
-| Final audit | `large` | `verify` |
+| Final audit (on request, or after `build … then verify`) | `large` | `verify` |
 
 A failing step is retried on `small` with the reviewer's issues, then once on
 `medium`, then marked `blocked`. Every guard that has a right answer is a
 dependency-free script: `plan-steps.mjs` (which plan, which waves),
 `forbidden-repairs.mjs` (no skipped test, no suppression, no edited gate),
-`detect-gates.mjs --run` (the repo's own definition of green).
+`detect-gates.mjs --run` (the repo's own definition of green; a command that an
+aggregate like `npm run check` already runs is skipped).
 
 Output is short on purpose. `build` prints one line per step
 (`S-001 done 0 small`), `verify` prints a verdict, one line per gate and one per

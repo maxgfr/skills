@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -127,16 +127,41 @@ test("the repo's own aggregate gate is detected without a CI workflow to reveal 
   // one reports its main gate as absent.
   const r = detect('aggregate-check')
   assert.ok(cmds(r).includes('npm run check'), `check dropped: ${JSON.stringify(cmds(r))}`)
-  assert.ok(cmds(r).includes('npm run validate'))
   assert.ok(!cmds(r).includes('npm run check:fix'), 'a :fix variant mutates — never a gate')
   assert.ok(!cmds(r).includes('npm run start'), 'a server is not a gate')
   assert.equal(r.ci.workflows.length, 0, 'this fixture has no CI — the gates come from scripts')
 })
 
+test('a gate the aggregate already runs is run once, inside it', () => {
+  // check = `npm run validate && npm test`: running all three runs the
+  // validator twice and the tests twice, for no extra proof.
+  const r = detect('aggregate-check')
+  assert.deepEqual(cmds(r), ['npm run check'])
+  assert.ok(r.notes.some((n) => /^2 gate\(s\) skipped.*npm run validate, npm run test\.$/.test(n)), JSON.stringify(r.notes))
+  assert.deepEqual(cmds(detect('concurrently')), ['npm run check'], 'npm:lint and npm:typecheck run inside check')
+})
+
+test('a CI step that is the body of a covered script is dropped too', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'detect-ci-'))
+  try {
+    mkdirSync(join(dir, '.github', 'workflows'), { recursive: true })
+    writeFileSync(join(dir, 'package-lock.json'), '{}')
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({ scripts: { test: 'node --test', 'ver-check': 'node v.mjs --check', check: 'npm test && npm run ver-check' } }),
+    )
+    writeFileSync(join(dir, '.github', 'workflows', 'ci.yml'), 'jobs:\n  t:\n    steps:\n      - run: node --test\n      - run: node v.mjs --check\n      - run: npm run lint:strict\n')
+    const out = JSON.parse(execFileSync(process.execPath, [SCRIPT, '--cwd', dir], { encoding: 'utf8' }))
+    assert.deepEqual(cmds(out), ['npm run check', 'npm run lint:strict'])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test("an aggregate gate gets the combined budget, not a single gate's", () => {
   const r = detect('aggregate-check')
   assert.equal(r.gates.find((g) => g.cmd === 'npm run check').timeout_s, 600)
-  assert.equal(r.gates.find((g) => g.cmd === 'npm run test').timeout_s, 300)
+  assert.equal(detect('npm-basic').gates.find((g) => g.cmd === 'npm run test').timeout_s, 300)
 })
 
 test('a concurrently-based aggregate check is a gate; a concurrently-based dev server is not', () => {

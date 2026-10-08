@@ -301,6 +301,45 @@ if (ciExtras.length > CI_EXTRA_CAP) {
   )
 }
 
+// ------------------------------------------------------------- Aggregates
+// A gate another gate already runs is run once, inside the aggregate: `check`
+// = `npm run validate && npm test` makes the other two redundant, and so does
+// a CI step that is the body of one of those scripts.
+
+const scripts = Object.fromEntries(
+  Object.entries(pkg?.scripts ?? {}).filter(([, body]) => typeof body === 'string'),
+)
+const scriptByBody = new Map(Object.entries(scripts).map(([name, body]) => [body.trim(), name]))
+
+function scriptOf(cmd) {
+  const m = /^(?:npm|pnpm|yarn|bun)(?:\s+run)?\s+([\w:.-]+)$/.exec(cmd)
+  if (m && scripts[m[1]] !== undefined) return m[1]
+  return scriptByBody.get(cmd) ?? null
+}
+
+function invoked(name, seen = new Set()) {
+  const body = scripts[name] || ''
+  for (const m of body.matchAll(/(?:\b(?:npm|pnpm|yarn|bun)(?:\s+run)?\s+|["']npm:)([\w:.-]+)/g)) {
+    const called = m[1]
+    if (scripts[called] === undefined || seen.has(called) || called === name) continue
+    seen.add(called)
+    invoked(called, seen)
+  }
+  return seen
+}
+
+const covered = new Map()
+for (const g of gates) {
+  const name = scriptOf(g.cmd)
+  if (name) for (const inner of invoked(name)) if (!covered.has(inner)) covered.set(inner, g.cmd)
+}
+const dropped = []
+for (let i = gates.length - 1; i >= 0; i--) {
+  const name = scriptOf(gates[i].cmd)
+  if (name && covered.has(name) && covered.get(name) !== gates[i].cmd) dropped.unshift(gates.splice(i, 1)[0].cmd)
+}
+if (dropped.length) notes.push(`${dropped.length} gate(s) skipped, already run by an aggregate: ${dropped.slice(0, 2).join(', ')}${dropped.length > 2 ? ', …' : ''}.`)
+
 // ------------------------------------------------------------------- Output
 
 gates.sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind))
