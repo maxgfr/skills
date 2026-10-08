@@ -1,3 +1,11 @@
+## [4.1.1](https://github.com/maxgfr/skills/compare/v4.1.0...v4.1.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* **verify:** detect-gates no longer turns CI noise into gates ([ccbc933](https://github.com/maxgfr/skills/commit/ccbc93387d96fc282bb3edec09ce31787056490c))
+* **verify:** name tracked files a gate rewrote, and print the gate notes ([78a664d](https://github.com/maxgfr/skills/commit/78a664d78c47e39e6d1dd78926924160cb391777))
+
 # [4.1.0](https://github.com/maxgfr/skills/compare/v4.0.0...v4.1.0) (2026-10-08)
 
 
