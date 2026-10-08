@@ -1,3 +1,14 @@
+# [4.0.0](https://github.com/maxgfr/skills/compare/v3.2.0...v4.0.0) (2026-10-08)
+
+
+* feat!: lean skills, one approval, build chains into verify ([1bab66b](https://github.com/maxgfr/skills/commit/1bab66b5dae5ff0fb6f7e3a680f958bda8f1cc1a))
+
+
+### BREAKING CHANGES
+
+* the `auto` and `then verify` arguments are gone (the chain
+is automatic), and the build workflow no longer returns `next`.
+
 # [3.2.0](https://github.com/maxgfr/skills/compare/v3.1.0...v3.2.0) (2026-10-08)
 
 
