@@ -1,16 +1,24 @@
 #!/usr/bin/env node
-// models.mjs — map the three abstract tiers (small, medium, large) to the
-// model names one host understands. The skills never name a model: names live
-// only in models.json, read from <repo>/.agents/models.json and then
-// ~/.agents/models.json. The first file that defines the host wins.
+// models.mjs — resolve the three abstract tiers (small, medium, large) to the
+// model and effort one host understands, and which tier does which job. The
+// skills never name a model: names live only in models.json, read from
+// ~/.agents/models.json and then <repo>/.agents/models.json. Both are merged
+// key by key, and the repo wins.
 //
-//   { "<host>": { "small": "…", "medium": "…", "large": "…" } }
+//   { "<host>": {
+//       "small":  { "model": "…", "effort": "…" },   // or just "…" for the model
+//       "medium": { "model": "…", "effort": "…" },
+//       "large":  { "model": "…", "effort": "…" },
+//       "attempts": ["small", "small", "medium"],     // build: tier of each try at a step
+//       "review": "medium",                            // build: the reviewer's tier
+//       "audit": "large"                               // verify: the auditor's tier
+//   } }
 //
-// A tier that is absent, empty or "inherit" resolves to null: the session's
-// own model. With no file at all every tier is null, and everything still runs.
+// Anything absent keeps the default below. A model or effort that is absent,
+// empty or "inherit" resolves to null: the session's own.
 //
 // Usage: node models.mjs --cwd <repo> --host <host>
-// Output: {"small":…,"medium":…,"large":…} on stdout.
+// Output: the resolved object, as one line of JSON.
 
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -18,30 +26,54 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export const TIERS = ['small', 'medium', 'large']
+const ROLES = { attempts: ['small', 'small', 'medium'], review: 'medium', audit: 'large' }
 
-export function resolveModels(cwd, host, home = homedir()) {
-  const out = { small: null, medium: null, large: null }
+const pick = (v) => (typeof v === 'string' && v.trim() && v.trim() !== 'inherit' ? v.trim() : null)
+
+function tier(value, where) {
+  if (value === undefined || value === null || typeof value === 'string') return { model: pick(value), effort: null }
+  if (typeof value !== 'object' || Array.isArray(value)) throw new Error(`${where} must be a model name or { "model", "effort" }.`)
+  for (const key of Object.keys(value))
+    if (key !== 'model' && key !== 'effort') throw new Error(`${where} has an unknown key "${key}".`)
+  return { model: pick(value.model), effort: pick(value.effort) }
+}
+
+function tierName(value, where) {
+  if (!TIERS.includes(value)) throw new Error(`${where} must be one of ${TIERS.join(', ')}.`)
+  return value
+}
+
+function read(file) {
+  let text
+  try {
+    text = readFileSync(file, 'utf8')
+  } catch {
+    return null
+  }
+  try {
+    return JSON.parse(text)
+  } catch (err) {
+    throw new Error(`${file} is not valid JSON: ${err.message}`)
+  }
+}
+
+export function resolveTiers(cwd, host, home = homedir()) {
+  const out = { small: tier(), medium: tier(), large: tier(), attempts: ROLES.attempts.slice(), review: ROLES.review, audit: ROLES.audit }
   if (!host) return out
-  for (const file of [join(cwd, '.agents', 'models.json'), join(home, '.agents', 'models.json')]) {
-    let text
-    try {
-      text = readFileSync(file, 'utf8')
-    } catch {
-      continue
+  for (const file of [join(home, '.agents', 'models.json'), join(cwd, '.agents', 'models.json')]) {
+    const config = read(file)
+    const entry = config && config[host]
+    if (!entry) continue
+    if (typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`${file}: "${host}" must be an object.`)
+    for (const [key, value] of Object.entries(entry)) {
+      const where = `${file}: ${host}.${key}`
+      if (TIERS.includes(key)) out[key] = tier(value, where)
+      else if (key === 'attempts') {
+        if (!Array.isArray(value) || !value.length) throw new Error(`${where} must be a non-empty list of tiers.`)
+        out.attempts = value.map((t, i) => tierName(t, `${where}[${i}]`))
+      } else if (key === 'review' || key === 'audit') out[key] = tierName(value, where)
+      else throw new Error(`${where} is not a known key (${[...TIERS, ...Object.keys(ROLES)].join(', ')}).`)
     }
-    let config
-    try {
-      config = JSON.parse(text)
-    } catch (err) {
-      throw new Error(`${file} is not valid JSON: ${err.message}`)
-    }
-    const tiers = config && config[host]
-    if (!tiers || typeof tiers !== 'object') continue
-    for (const tier of TIERS) {
-      const name = tiers[tier]
-      out[tier] = typeof name === 'string' && name.trim() && name !== 'inherit' ? name.trim() : null
-    }
-    return out
   }
   return out
 }
@@ -65,8 +97,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     values[args[i]] = args[i + 1]
   }
   try {
-    const models = resolveModels(resolve(values['--cwd'] ?? process.cwd()), values['--host'] ?? null)
-    process.stdout.write(JSON.stringify(models) + '\n')
+    process.stdout.write(JSON.stringify(resolveTiers(resolve(values['--cwd'] ?? process.cwd()), values['--host'] ?? null)) + '\n')
   } catch (err) {
     process.stderr.write(`${err.message}\n`)
     process.exit(1)

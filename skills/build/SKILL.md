@@ -8,8 +8,8 @@ metadata:
 
 # build
 
-Implement an approved plan one step at a time. The `small` tier writes each
-step, the `medium` tier reviews it and reruns its proof. You only orchestrate.
+Implement an approved plan one step at a time. By default the `small` tier
+writes each step and the `medium` tier reviews it and reruns its proof. You only orchestrate.
 Paths are relative to this skill's directory.
 
 ## Laws
@@ -24,20 +24,20 @@ Paths are relative to this skill's directory.
 
 ## Phase 0: one pass, no questions
 
-1. `node scripts/plan-steps.mjs --cwd <repo> [--plan <path>] --host <host>`. `host` is the CLI you run in (`claude`, `codex`, `opencode`…). Pass it, never guess it. On `ok: false`, print `error` and stop. Otherwise keep `planPath`, `steps`, `waves`, `attempts`, `models`.
+1. `node scripts/plan-steps.mjs --cwd <repo> [--plan <path>] --host <host>`. `host` is the CLI you run in (`claude`, `codex`, `opencode`…). Pass it, never guess it. On `ok: false`, print `error` and stop. Otherwise keep `planPath`, `steps`, `waves`, `tiers`.
 2. Worktree: the host's worktree tool (`EnterWorktree`), else `git worktree add .worktrees/build-<slug> -b build/<slug>`. Never build on the user's branch.
 3. Baseline: `git stash create` in the worktree. Empty output means `HEAD`.
 4. Launch in the same turn:
-   - **Workflow tool:** `Workflow({ scriptPath: "workflows/build.mjs", args: { cwd, planPath, steps, waves, attempts, models, skillDir, baseline, host, namespace } })`. Pass `namespace: "maxgfr"` under the Claude plugin only.
+   - **Workflow tool:** `Workflow({ scriptPath: "workflows/build.mjs", args: { cwd, planPath, steps, waves, tiers, skillDir, baseline, host, namespace } })`. Pass `namespace: "maxgfr"` under the Claude plugin only.
    - **Subagent tool, no Workflow:** `references/dispatch.md`.
    - **Neither:** do each step yourself in wave order, with the same checks. Mark the output `inline`.
 
 ## Per step
 
-- Escalation follows `attempts`: small, small with the reviewer's issues, then medium. After that the step is `blocked`. An implementer that returns `blocked_by` jumps to medium; at medium it is `blocked`.
+- Escalation follows `tiers.attempts` (default: small, small with the reviewer's issues, then medium). After the last one the step is `blocked`. An implementer that returns `blocked_by` jumps to the last attempt; there it is `blocked`. The reviewer runs on `tiers.review`.
 - Steps in a wave run in parallel. A step whose dependency is not `done` is `skipped`.
 - An agent that never returned leaves the step `unproven`, with no retry. That is not a pass.
-- `models[tier]` is `null`, or the subagent tool takes no model: the agent inherits the session model. If the tool takes no model, say so once.
+- Each agent gets `tiers[tier].model` and `.effort`. `null`, or a subagent tool without that option, means the session's own. If the tool lacks one, say so once.
 
 ## Output
 

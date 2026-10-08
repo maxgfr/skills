@@ -9,7 +9,7 @@ metadata:
 # verify
 
 By default, run the repository's gates once and print the verdict: cheap, a few
-lines. On request, one `large`-tier auditor also reads the change. Paths are relative to this skill's directory.
+lines. On request, one auditor (the `large` tier by default) also reads the change. Paths are relative to this skill's directory.
 
 ## Laws
 
@@ -31,7 +31,7 @@ lines. On request, one `large`-tier auditor also reads the change. Paths are rel
 
 1. **Gates.** `node scripts/detect-gates.mjs --cwd <repo> --run`. It runs each detected gate once (gates an aggregate already runs are skipped) and prints compact JSON: `ok`, and per gate `cmd`, `exit`, and `out` on failure. Do not rerun them. With no arguments, stop here.
 2. **Diff.** With `<ref>`: `git diff <ref>`. With a dirty tree: `git diff HEAD`. With a clean tree: `git diff $(git merge-base HEAD origin/HEAD)`, or `main` when `origin/HEAD` is unset. Always add the untracked files from `git status --porcelain`. A ref that does not resolve: say so and stop.
-3. **Audit.** `node scripts/models.mjs --cwd <repo> --host <host>`, where `host` is the CLI you run in. Pass it, never guess it. Dispatch one subagent with model `large` (`null` means inherit) and the brief in `references/audit.md`. With no subagent tool, do the audit yourself and mark the output `inline`. With an empty diff, skip the audit.
+3. **Audit.** `node scripts/models.mjs --cwd <repo> --host <host>`, where `host` is the CLI you run in. Pass it, never guess it. Its `audit` key names a tier (default `large`). Dispatch one subagent with that tier's `model` and `effort` (`null` means the session's own) and the brief in `references/audit.md`. With no subagent tool, do the audit yourself and mark the output `inline`. With an empty diff, skip the audit.
 
 ## Verdict
 
@@ -58,5 +58,5 @@ Without an audit, end with `not audited`. Add one line for anything else not che
 ## Does not
 
 - Repair, revert, commit, or rewrite a test or a gate.
-- Run panels, skeptics, or a second auditor. One audit, on the `large` tier.
+- Run panels, skeptics, or a second auditor. One audit, on the `audit` tier.
 - Report a finding outside the diff, or one without a scenario.

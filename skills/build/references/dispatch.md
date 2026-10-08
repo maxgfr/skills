@@ -1,17 +1,19 @@
 # Dispatch without a Workflow tool
 
 For any host with a subagent tool. Same ladder and same briefs as
-`workflows/build.mjs`. Paste the briefs, do not paraphrase them.
+`workflows/build.mjs`. Paste the briefs, do not paraphrase them. "On tier `t`"
+means model `tiers[t].model` and effort `tiers[t].effort`, each passed only when
+set and when the tool takes it.
 
 ## Loop
 
 For each wave in `waves`, in order:
 
 1. Skip any step whose dependency is not `done` (`needs S-xxx`).
-2. Send every implementer of the wave in one message, model `models[attempts[i]]`.
-3. Then send the wave's reviewers in one message, model `models.medium`.
+2. Send every implementer of the wave in one message, on tier `tiers.attempts[i]`.
+3. Then send the wave's reviewers in one message, on tier `tiers.review`.
 4. Decide each step:
-   - The reviewer's `guard` is not `CLEAN`: send the revert brief on `models.small`, mark the step `blocked`, stop the build.
+   - The reviewer's `guard` is not `CLEAN`: send the revert brief on tier `tiers.attempts[0]`, mark the step `blocked`, stop the build.
    - Implementer `exit` 0, reviewer `exit` 0 and `ok`: `done`.
    - Otherwise, next attempt with the reviewer's issues. After the last attempt: `blocked`.
    - An agent that never returned: `unproven`, no retry.

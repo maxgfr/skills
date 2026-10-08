@@ -8,8 +8,8 @@ export const meta = {
 }
 
 // Every input was resolved by Phase 0 (plan-steps.mjs). Nothing here re-reads
-// the plan or decides a model: `models` maps a tier to a name, or to null for
-// the session's own model.
+// the plan or decides a model: `tiers` maps a tier to { model, effort }, null
+// meaning the session's own, and names the tier of each attempt and of review.
 const A = args || {}
 const cwd = A.cwd || '.'
 const planPath = A.planPath || ''
@@ -19,11 +19,12 @@ const skillDir = A.skillDir || '.'
 const baseline = A.baseline || 'HEAD'
 const host = A.host || null
 const namespace = A.namespace || null
-const models = A.models || {}
-// small, small with the reviewer's issues, then medium once. Then blocked.
-const attempts = Array.isArray(A.attempts) && A.attempts.length ? A.attempts : ['small', 'small', 'medium']
-const REVIEW_TIER = 'medium'
-const model = (tier) => models[tier] || undefined
+const tiers = A.tiers || {}
+// By default: small, small with the reviewer's issues, then medium once. Then blocked.
+const attempts = Array.isArray(tiers.attempts) && tiers.attempts.length ? tiers.attempts : ['small', 'small', 'medium']
+const REVIEW_TIER = tiers.review || 'medium'
+// The agent() options for a tier: what is unset is inherited from the session.
+const on = (tier) => ({ model: (tiers[tier] && tiers[tier].model) || undefined, effort: (tiers[tier] && tiers[tier].effort) || undefined })
 
 function skillCall(name, rest) {
   if (host === 'codex') return `$${name} ${rest}`
@@ -103,7 +104,7 @@ async function runStep(id) {
     rec.tier = tier
     const impl = await agent(implBrief(step, feedback), {
       schema: IMPL_SCHEMA,
-      model: model(tier),
+      ...on(tier),
       label: `impl:${id}:${i + 1}`,
       phase: 'Steps',
     })
@@ -120,7 +121,7 @@ async function runStep(id) {
     }
     const rev = await agent(reviewBrief(step), {
       schema: REVIEW_SCHEMA,
-      model: model(REVIEW_TIER),
+      ...on(REVIEW_TIER),
       label: `review:${id}:${i + 1}`,
       phase: 'Steps',
     })
@@ -130,7 +131,7 @@ async function runStep(id) {
     if (rev.guard !== 'CLEAN') {
       const all = rev.violations || []
       await agent(`${CONTEXT}\n\nRevert exactly these forbidden hunks and nothing else: ${all.join(', ') || 'unspecified'}. Use \`git checkout -p\` or restore and re-apply the clean hunks. Return the reverted files.`, {
-        model: model('small'),
+        ...on(attempts[0]),
         label: `revert:${id}`,
         phase: 'Steps',
       })

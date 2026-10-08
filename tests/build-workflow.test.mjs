@@ -32,13 +32,19 @@ const IMPL_OK = { done: true, files: ['src/x.ts'], exit: 0, out: 'ok' }
 const REVIEW_OK = { ok: true, exit: 0, guard: 'CLEAN', issues: [] }
 const REJECT = { ok: false, exit: 1, guard: 'CLEAN', issues: ['src/S-001.ts:3 — missing branch'] }
 const HAPPY = { 'impl:': IMPL_OK, 'review:': REVIEW_OK }
-const MODELS = { small: 'tier-s', medium: 'tier-m', large: null }
+const TIERS = {
+  small: { model: 'tier-s', effort: 'max' },
+  medium: { model: 'tier-m', effort: 'high' },
+  large: { model: null, effort: null },
+  attempts: ['small', 'small', 'medium'],
+  review: 'medium',
+}
 
 // Longest pattern wins, so `review:S-002` beats `review:`.
 function makeAgent(script, calls) {
   const patterns = Object.keys(script).sort((a, b) => b.length - a.length)
   return async (prompt, opts = {}) => {
-    calls.push({ label: opts.label, model: opts.model, prompt })
+    calls.push({ label: opts.label, model: opts.model, effort: opts.effort, prompt })
     const hit = patterns.find((p) => opts.label === p || opts.label.startsWith(p))
     const value = hit ? script[hit] : null
     return typeof value === 'function' ? value(prompt, opts) : value
@@ -47,7 +53,7 @@ function makeAgent(script, calls) {
 
 async function run(over, script) {
   const calls = []
-  const args = { cwd: '/wt', planPath: 'docs/plans/x.md', steps: CHAIN, skillDir: '/skill', baseline: 'abc', host: 'claude', models: MODELS, ...over }
+  const args = { cwd: '/wt', planPath: 'docs/plans/x.md', steps: CHAIN, skillDir: '/skill', baseline: 'abc', host: 'claude', tiers: TIERS, ...over }
   const result = await compiled(args, makeAgent(script, calls), parallel, () => {}, () => {})
   return { result, calls, labels: calls.map((c) => c.label) }
 }
@@ -65,14 +71,29 @@ test('the handoff uses the host syntax it was given, and never guesses one', asy
   assert.equal((await run({ host: null }, HAPPY)).result.next, 'invoke the verify skill with docs/plans/x.md')
 })
 
-test('implementers get the small model and reviewers the medium one', async () => {
+test('implementers get the small tier and reviewers the medium one, model and effort', async () => {
   const { calls } = await run({}, HAPPY)
-  for (const c of calls) assert.equal(c.model, c.label.startsWith('impl:') ? 'tier-s' : 'tier-m', c.label)
+  for (const c of calls) {
+    const impl = c.label.startsWith('impl:')
+    assert.deepEqual([c.model, c.effort], impl ? ['tier-s', 'max'] : ['tier-m', 'high'], c.label)
+  }
 })
 
-test('an unset tier passes no model, so the agent inherits the session one', async () => {
-  const { calls } = await run({ models: {} }, HAPPY)
-  assert.ok(calls.every((c) => c.model === undefined))
+test('an unset tier passes no model and no effort, so the agent inherits the session', async () => {
+  const { calls } = await run({ tiers: {} }, HAPPY)
+  assert.ok(calls.every((c) => c.model === undefined && c.effort === undefined))
+})
+
+test('the ladder and the reviewer tier come from the config', async () => {
+  const tiers = { ...TIERS, attempts: ['medium', 'large'], review: 'large', large: { model: 'tier-l', effort: 'xhigh' } }
+  const { calls, result } = await run({ steps: [CHAIN[0]], tiers }, { ...HAPPY, 'review:': REJECT })
+  assert.deepEqual(calls.map((c) => [c.label, c.model]), [
+    ['impl:S-001:1', 'tier-m'],
+    ['review:S-001:1', 'tier-l'],
+    ['impl:S-001:2', 'tier-l'],
+    ['review:S-001:2', 'tier-l'],
+  ])
+  assert.match(result.lines[0], /^S-001 blocked 1 large /)
 })
 
 test('a rejected step escalates small, small with the issues, then medium, then blocks', async () => {
@@ -101,7 +122,7 @@ test('a small implementer that reports blocked_by goes straight to medium; a med
 })
 
 test('a reviewer that rejects is not overruled by an implementer that reported green', async () => {
-  const { result } = await run({ steps: [CHAIN[0]], attempts: ['small'] }, { ...HAPPY, 'review:': { ...REVIEW_OK, ok: false } })
+  const { result } = await run({ steps: [CHAIN[0]], tiers: { ...TIERS, attempts: ['small'] } }, { ...HAPPY, 'review:': { ...REVIEW_OK, ok: false } })
   assert.equal(result.status, 'blocked')
 })
 

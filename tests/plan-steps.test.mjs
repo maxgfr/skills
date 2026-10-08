@@ -39,18 +39,25 @@ test('parsePlan reads the status and only the step fields the build uses', () =>
   assert.match(s2.raw, /^### S-002[\s\S]*429/)
 })
 
-test('the schedule carries the three-attempt ladder and the models for the host', () => {
+test('the schedule carries the tiers for the host: model, effort, ladder, reviewer', () => {
   const dir = mkdtempSync(join(tmpdir(), 'plan-steps-'))
   try {
     writeFileSync(join(dir, 'plan.md'), fixture('approved.md'))
     mkdirSync(join(dir, '.agents'))
-    writeFileSync(join(dir, '.agents', 'models.json'), JSON.stringify({ alpha: { small: 'tiny', medium: 'mid' } }))
+    writeFileSync(join(dir, '.agents', 'models.json'), JSON.stringify({ alpha: { small: { model: 'tiny', effort: 'max' }, medium: 'mid' } }))
     const r = cli(dir, '--plan', 'plan.md', '--host', 'alpha')
     assert.equal(r.ok, true, JSON.stringify(r))
-    assert.deepEqual(r.attempts, ['small', 'small', 'medium'])
-    assert.deepEqual(r.models, { small: 'tiny', medium: 'mid', large: null })
-    // No host: every tier inherits the session model.
-    assert.deepEqual(cli(dir, '--plan', 'plan.md').models.small, null)
+    assert.deepEqual(r.tiers.attempts, ['small', 'small', 'medium'])
+    assert.equal(r.tiers.review, 'medium')
+    assert.deepEqual(r.tiers.small, { model: 'tiny', effort: 'max' })
+    assert.deepEqual(r.tiers.medium, { model: 'mid', effort: null })
+    // No host: every tier inherits the session's model and effort.
+    assert.deepEqual(cli(dir, '--plan', 'plan.md').tiers.small, { model: null, effort: null })
+    // A broken config is a one-line refusal, not a build on the wrong models.
+    writeFileSync(join(dir, '.agents', 'models.json'), JSON.stringify({ alpha: { smal: 'x' } }))
+    const bad = cli(dir, '--plan', 'plan.md', '--host', 'alpha')
+    assert.equal(bad.ok, false)
+    assert.match(bad.error, /alpha\.smal is not a known key/)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

@@ -6,8 +6,9 @@
 // file will read them off a Markdown file that sometimes says something else.
 // So the parsing lives here, and the workflow receives steps, not prose.
 //
-// It also hands back the escalation ladder and the model each tier resolves to
-// on this host, so Phase 0 is one script call.
+// It also hands back `tiers` from models.mjs (each tier's model and effort on
+// this host, the escalation ladder, the reviewer's tier), so Phase 0 is one
+// script call.
 //
 // Usage:
 //   node plan-steps.mjs [--cwd <repo>] [--plan <path>] [--host <host>] [--pretty]
@@ -18,13 +19,10 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
 import { join, resolve, relative, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { resolveModels } from './models.mjs'
+import { resolveTiers } from './models.mjs'
 
 export const PLAN_DIR = 'docs/plans'
 export const STEP_ID = /S-\d{3}/g
-// The tier of each attempt at a step: the small model, the small model again
-// with the reviewer's issues, then the medium model once. Then blocked.
-export const ATTEMPTS = ['small', 'small', 'medium']
 
 // ------------------------------------------------------------ find the plan
 
@@ -224,8 +222,7 @@ export function schedule(cwd, given, host = null) {
     planPath: rel,
     steps: plan.steps,
     waves: w.waves,
-    attempts: ATTEMPTS,
-    models: resolveModels(cwd, host),
+    tiers: resolveTiers(cwd, host),
   }
 }
 

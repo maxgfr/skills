@@ -42,6 +42,9 @@ $blueprint auto       # all three from one call, after your approval
 | Escalation after two failed small attempts | `medium` | `build` |
 | Final audit (on request, or after `build … then verify`) | `large` | `verify` |
 
+These are the defaults. Every tier's model and effort, and which tier does
+which job, is configurable: see [Models and effort](#models-and-effort).
+
 A failing step is retried on `small` with the reviewer's issues, then once on
 `medium`, then marked `blocked`. Every guard that has a right answer is a
 dependency-free script: `plan-steps.mjs` (which plan, which waves),
@@ -53,22 +56,42 @@ Output is short on purpose. `build` prints one line per step
 (`S-001 done 0 small`), `verify` prints a verdict, one line per gate and one per
 finding. No report files.
 
-## Models
+## Models and effort
 
-The skills speak in tiers. Names live in `models.json`, read from
-`<repo>/.agents/models.json`, then `~/.agents/models.json`. The first file that
-defines the current host wins. An absent tier, or no file at all, means the
-session's own model, so everything works with no config.
+The skills speak in tiers. What a tier means lives in `models.json`: first
+`~/.agents/models.json` (yours, for every repo), then `<repo>/.agents/models.json`,
+which overrides it key by key. Anything absent inherits the session's model
+and effort, so everything works with no config.
 
 ```json
 {
-  "claude": { "small": "haiku", "medium": "sonnet", "large": "opus" },
-  "codex":  { "small": "<model>", "medium": "<model>", "large": "<model>" }
+  "claude": {
+    "small":  { "model": "haiku",  "effort": "max" },
+    "medium": { "model": "sonnet", "effort": "high" },
+    "large":  { "model": "opus",   "effort": "high" }
+  },
+  "codex": {
+    "small":  { "effort": "medium" },
+    "medium": { "effort": "high" },
+    "large":  { "effort": "xhigh" }
+  }
 }
 ```
 
-Use whatever names your host's subagent tool accepts. If that tool takes no
-model, every tier inherits and the skill says so once. Check a resolution with:
+A tier is `{ "model", "effort" }`, or a bare string for the model alone. The
+`codex` entry above keeps the session's model and only changes the effort. Use
+the names and effort levels your host's subagent tool accepts. The roles can
+move too, per host:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `attempts` | `["small", "small", "medium"]` | `build`: the tier of each try at a step, then `blocked` |
+| `review` | `"medium"` | `build`: the reviewer's tier |
+| `audit` | `"large"` | `verify`: the auditor's tier |
+
+`large` also names the planner, but `blueprint` runs in your session: pick its
+model and effort when you start the session. A typo (`"smal"`, `"modle"`) is an
+error, never a silent default. Check what a repo resolves to with:
 
 ```bash
 node skills/build/scripts/models.mjs --cwd . --host claude
