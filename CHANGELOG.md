@@ -1,3 +1,11 @@
+# [3.1.0](https://github.com/maxgfr/skills/compare/v3.0.0...v3.1.0) (2026-10-08)
+
+
+### Features
+
+* **build:** one reviewer per wave, worktree from local HEAD, plan Verify commands checked ([e7ee07e](https://github.com/maxgfr/skills/commit/e7ee07ee38fc1714a4e79871afe35377557ec722))
+* configure each tier's model and effort, and which tier does which job ([d0c4451](https://github.com/maxgfr/skills/commit/d0c44516ced87b9bf8736ecae06dda9a4ebed081))
+
 # [3.0.0](https://github.com/maxgfr/skills/compare/v2.1.0...v3.0.0) (2026-10-08)
 
 
