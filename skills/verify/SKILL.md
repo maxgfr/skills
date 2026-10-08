@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Use only when the user explicitly asks for verify to check completed work with repository gates and evidence.
+description: Run the repository's own gates once and return PASS, FAIL or UNPROVEN in a few lines; audit the diff when given a plan. Use when work is finished and should be checked, or the user asks whether it passes.
 license: MIT
 metadata:
   opencode/autoinvoke: 'true'

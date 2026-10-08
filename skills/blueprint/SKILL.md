@@ -1,6 +1,6 @@
 ---
 name: blueprint
-description: Use only when the user explicitly asks for blueprint to ground decisions and prepare an implementation plan.
+description: Plan a code change before writing it — settle the open decisions with the user, ground every fact in the repo, write an approved docs/plans/ file. Use when the user asks for a plan, or before a change that spans several files or leaves a design decision open.
 license: MIT
 metadata:
   opencode/autoinvoke: 'true'

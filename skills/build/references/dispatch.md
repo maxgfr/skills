@@ -33,6 +33,7 @@ Implement exactly this step and nothing else:
 <the whole ### S-xxx block, verbatim>
 
 - Touch only the files under Files:. Open a file before editing it; never guess a path or a symbol.
+- Use as few tool calls as you can: open only what the step names, make the change, run Verify once.
 - Then run, from the worktree: <verifyCmd>  (expected: <verifyExpected>)
 - Return JSON: done (Verify exited 0 and every Change bullet is in), files (relative paths), exit (-1 if it did not finish), out (at most 10 lines of its output).
 
@@ -54,18 +55,22 @@ Returns `{guard, violations?, steps[{id, ok, exit, issues[≤5]}]}`.
 Worktree (the only place you may write; run every command here; do not commit): <cwd>
 Plan: <planPath>
 
-Review the change for these steps. Read and run anything; edit nothing.
+Review the change for these steps. Edit nothing.
 
 <each ### S-xxx block being reviewed, verbatim, separated by a blank line>
 
-1. Read `git diff <baseline> -- <every file of those steps>` and any untracked file there (`git status --porcelain`). Per step: every Change bullet present, Preserve untouched, no file outside its Files:, no debug output or dead code.
-2. Run each step's Verify command:
-   <S-xxx>: <verifyCmd>
-3. Run once: node <skillDir>/scripts/forbidden-repairs.mjs --since <baseline> --plan <planPath>
-Return JSON: guard (the "verdict" of 3), violations (3's violations as "rule file:line"), steps (one per step: id, ok (1 holds), exit (of its command in 2), issues (at most 5, each "file:line — problem")).
+Run this once, from the worktree, as a single shell call:
+
+git diff <baseline> -- <paths>
+for f in $(git ls-files -o --exclude-standard -- <paths>); do git diff --no-index /dev/null "$f"; done
+out=$( (<verifyCmd>) 2>&1 ); e=$?; printf '%s\n' "$out" | tail -15; echo "<S-xxx> exit=$e"     (one line per step)
+node <skillDir>/scripts/forbidden-repairs.mjs --since <baseline> --plan <planPath>
+
+It prints the diff (new files included), each step's Verify output ending "S-xxx exit=N", then the guard's JSON. Open a file only if the diff leaves a doubt. Per step: every Change bullet present, Preserve untouched, no file outside its Files:, no debug output or dead code.
+Return JSON: guard (the guard's "verdict"), violations (its violations as "rule file:line"), steps (one per step: id, ok (the checks above hold), exit (its exit=N), issues (at most 5, each "file:line — problem")).
 ```
 
-When you dispatch by hand you have Bash: you may run step 3 yourself instead.
+`<paths>` is every `Files:` path of the steps reviewed, space-separated, or `.` if none.
 
 ## Revert
 

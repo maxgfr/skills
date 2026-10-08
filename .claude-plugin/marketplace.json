@@ -10,7 +10,7 @@
     {
       "name": "maxgfr",
       "source": "./",
-      "description": "One loop, three skills the agent runs only when you ask for them: blueprint plans a change and gets it approved, build implements the approved plan step by step in a worktree, and verify proves the result. A large model plans and audits, a small one codes, a medium one reviews; tiers map to models in one config file. Skills land under the maxgfr: namespace.",
+      "description": "One loop, three skills the agent runs when they fit: blueprint plans a change and gets it approved, build implements the approved plan step by step in a worktree, and verify proves the result. A large model plans and audits, a small one codes, a medium one reviews; tiers map to models in one config file. Skills land under the maxgfr: namespace.",
       "homepage": "https://github.com/maxgfr/skills",
       "license": "MIT",
       "category": "engineering",

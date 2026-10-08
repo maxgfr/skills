@@ -1,6 +1,6 @@
 ---
 name: build
-description: Use only when the user explicitly asks for build to implement an approved plan and verify the changes.
+description: Implement an approved docs/plans/ plan step by step in a worktree — small-tier coders, a medium-tier reviewer, a guard against silenced checks. Use when an approved plan exists and the user wants it implemented.
 license: MIT
 metadata:
   opencode/autoinvoke: 'true'
@@ -49,7 +49,7 @@ S-002 blocked 1 medium src/a.ts:3 — missing branch
 S-003 skipped - - needs S-002
 ```
 
-- `built` → the verify call with `planPath`. With `then verify`, run it now.
+- `built` → the verify call with the plan's absolute path, run with the worktree as `<repo>`: the change is there, not on the user's branch. With `then verify`, run it now.
 - `blocked` / `unproven` → name the step and stop.
 
 ## Does not

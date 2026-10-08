@@ -17,8 +17,8 @@ npx skills add maxgfr/skills                                                    
 /plugin install maxgfr
 ```
 
-The second block is the Claude Code plugin. The skills run when you ask for
-them (see [below](#on-request-or-explicit-only)). Pick one path per host. The
+The second block is the Claude Code plugin. The agent runs a skill on its own
+when it fits (see [below](#automatic-or-explicit-only)). Pick one path per host. The
 invocation syntax depends on the host: `$verify` in Codex, `/maxgfr:verify` for
 the Claude plugin, `/verify` for a standalone skill. Each skill is
 self-contained, so `npx skills add maxgfr/skills --skill verify` takes just one.
@@ -97,13 +97,13 @@ error, never a silent default. Check what a repo resolves to with:
 node skills/build/scripts/models.mjs --cwd . --host claude
 ```
 
-## On request or explicit-only
+## Automatic or explicit-only
 
-All three ship **on request**: the agent may call one, but each description
-restricts it to when you ask for it. Invoking by name always works. To make a
+All three ship **automatic**: each description says when the skill fits, and the
+agent invokes it then. Invoking by name always works. To make a
 skill explicit-only, so that only its name runs it, change the installed copy:
 
-| Host | Shipped, on request | Explicit-only |
+| Host | Shipped, automatic | Explicit-only |
 | --- | --- | --- |
 | Claude Code | no `disable-model-invocation` in `SKILL.md` | add `disable-model-invocation: true` |
 | Codex | `allow_implicit_invocation: true` in `agents/openai.yaml` | set `false` |

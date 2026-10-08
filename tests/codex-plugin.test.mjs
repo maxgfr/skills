@@ -7,7 +7,7 @@ import { validate } from '../scripts/validate-skills.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
-test('the Codex plugin exposes on-request public skills and registers no hooks', () => {
+test('the Codex plugin exposes automatic public skills and registers no hooks', () => {
   const manifestPath = join(root, '.codex-plugin', 'plugin.json')
   assert.ok(existsSync(manifestPath), 'missing .codex-plugin/plugin.json')
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
@@ -24,11 +24,12 @@ test('the Codex plugin exposes on-request public skills and registers no hooks',
   for (const skill of ['blueprint', 'build', 'verify']) {
     const skillMd = readFileSync(join(root, 'skills', skill, 'SKILL.md'), 'utf8')
     const metadata = readFileSync(join(root, 'skills', skill, 'agents', 'openai.yaml'), 'utf8')
-    // Model-invocable, but the description restricts it to explicit requests.
+    // Model-invocable, and the description says when the skill is useful, not "only on request".
     assert.doesNotMatch(skillMd, /^disable-model-invocation:\s*true\s*$/m)
     assert.doesNotMatch(skillMd, /opencode\/autoinvoke:\s*['"]?false['"]?\s*$/m)
     assert.match(skillMd, /^\s{2}opencode\/autoinvoke:\s*'true'$/m)
-    assert.match(skillMd, new RegExp(`^description: Use only when the user explicitly asks for ${skill} `, 'm'))
+    assert.match(skillMd, /^description: .*Use when /m)
+    assert.doesNotMatch(skillMd, /^description: .*only when the user explicitly asks/m)
     assert.match(metadata, /^interface:$/m)
     assert.match(metadata, /^\s{2}display_name:\s*"[^"]+"$/m)
     assert.match(metadata, /^\s{2}short_description:\s*".{25,64}"$/m)

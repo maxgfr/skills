@@ -90,7 +90,10 @@ test('a wave of parallel steps shares one reviewer, which reruns every Verify an
   const { result, calls } = await run({ steps: wide, waves: [['S-001', 'S-002', 'S-003']] }, HAPPY)
   const reviews = calls.filter((c) => c.label.startsWith('review:'))
   assert.equal(reviews.length, 1)
-  for (const id of ['S-001', 'S-002', 'S-003']) assert.ok(reviews[0].prompt.includes(`${id}: npm test -- ${id}`))
+  for (const id of ['S-001', 'S-002', 'S-003']) {
+    assert.ok(reviews[0].prompt.includes(`out=$( (npm test -- ${id}) 2>&1 ); e=$?;`), id)
+    assert.ok(reviews[0].prompt.includes(`echo "${id} exit=$e"`), id)
+  }
   assert.equal(reviews[0].prompt.match(/forbidden-repairs\.mjs/g).length, 1)
   assert.equal(result.status, 'built')
 })
@@ -206,7 +209,11 @@ test('a long violation list stays one short line, and the revert still gets all 
 test('the reviewer reruns Verify and the guard on the baseline and the plan', async () => {
   const { calls } = await run({ steps: [CHAIN[0]] }, HAPPY)
   const review = calls.find((c) => c.label.startsWith('review:')).prompt
-  assert.ok(review.includes('S-001: npm test -- S-001'))
+  assert.ok(review.includes('out=$( (npm test -- S-001) 2>&1 ); e=$?;'))
+  // One shell call holds the whole review: every extra tool call re-sends the
+  // agent's context, which is where a subagent's tokens go.
+  assert.match(review, /Run this once, from the worktree, as a single shell call:\n\ngit diff abc -- src\/S-001\.ts\nfor f in \$\(git ls-files -o --exclude-standard -- src\/S-001\.ts\)/)
+  assert.ok(review.includes('| tail -15'), 'Verify output is capped')
   assert.ok(review.includes('node /skill/scripts/forbidden-repairs.mjs --since abc --plan docs/plans/x.md'))
   const impl = calls.find((c) => c.label.startsWith('impl:')).prompt
   assert.ok(impl.includes(CHAIN[0].raw) && impl.includes('YOU MAY NOT'))

@@ -83,6 +83,7 @@ Implement exactly this step and nothing else:
 ${step.raw}
 
 - Touch only the files under Files:. Open a file before editing it; never guess a path or a symbol.
+- Use as few tool calls as you can: open only what the step names, make the change, run Verify once.
 - Then run, from the worktree: ${step.verifyCmd}  (expected: ${step.verifyExpected || 'see the step'})
 - Return JSON: done (Verify exited 0 and every Change bullet is in), files (relative paths), exit (-1 if it did not finish), out (at most 10 lines of its output).
 
@@ -90,21 +91,34 @@ ${FORBIDDEN}${feedback ? `\n\nThe previous attempt was rejected. Fix every item:
 }
 
 // One reviewer per round of a wave: it judges every step just implemented,
-// reruns each Verify, and runs the guard once on the whole diff.
+// reruns each Verify, and runs the guard once on the whole diff. Everything it
+// needs comes out of one shell call: every extra tool call re-sends the
+// agent's whole context, which is where a subagent's tokens go.
+function reviewScript(list) {
+  const files = list.flatMap((s) => s.files || [])
+  const paths = files.length ? files.join(' ') : '.'
+  return [
+    `git diff ${baseline} -- ${paths}`,
+    `for f in $(git ls-files -o --exclude-standard -- ${paths}); do git diff --no-index /dev/null "$f"; done`,
+    ...list.map((s) => `out=$( (${s.verifyCmd}) 2>&1 ); e=$?; printf '%s\\n' "$out" | tail -15; echo "${s.id} exit=$e"`),
+    `node ${skillDir}/scripts/forbidden-repairs.mjs --since ${baseline}${planPath ? ` --plan ${planPath}` : ''}`,
+  ].join('\n')
+}
+
 function reviewBrief(ids) {
   const list = ids.map((id) => byId.get(id))
-  const files = list.flatMap((s) => s.files || [])
   return `${CONTEXT}
 
-Review the change for these steps. Read and run anything; edit nothing.
+Review the change for these steps. Edit nothing.
 
 ${list.map((s) => s.raw).join('\n\n')}
 
-1. Read \`git diff ${baseline} -- ${files.length ? files.join(' ') : '.'}\` and any untracked file there (\`git status --porcelain\`). Per step: every Change bullet present, Preserve untouched, no file outside its Files:, no debug output or dead code.
-2. Run each step's Verify command:
-${list.map((s) => `   ${s.id}: ${s.verifyCmd}`).join('\n')}
-3. Run once: node ${skillDir}/scripts/forbidden-repairs.mjs --since ${baseline}${planPath ? ` --plan ${planPath}` : ''}
-Return JSON: guard (the "verdict" of 3), violations (3's violations as "rule file:line"), steps (one per step: id, ok (1 holds), exit (of its command in 2), issues (at most 5, each "file:line — problem")).`
+Run this once, from the worktree, as a single shell call:
+
+${reviewScript(list)}
+
+It prints the diff (new files included), each step's Verify output ending "S-xxx exit=N", then the guard's JSON. Open a file only if the diff leaves a doubt. Per step: every Change bullet present, Preserve untouched, no file outside its Files:, no debug output or dead code.
+Return JSON: guard (the guard's "verdict"), violations (its violations as "rule file:line"), steps (one per step: id, ok (the checks above hold), exit (its exit=N), issues (at most 5, each "file:line — problem")).`
 }
 
 // An agent that never returned judged nothing: the step is `unproven`, it buys
