@@ -10,6 +10,7 @@ import {
   LISTING_CAP,
   TRIGGER,
   SKILL_LINE_BUDGET,
+  MODEL_NAME,
   extractReferences,
   validate,
 } from '../scripts/validate-skills.mjs'
@@ -29,7 +30,7 @@ function fixtureRepo(lines, extra = () => {}) {
 }
 
 test('the SKILL.md line budget is the one AGENTS.md states', () => {
-  assert.equal(SKILL_LINE_BUDGET, 150)
+  assert.equal(SKILL_LINE_BUDGET, 80)
 })
 
 test('a SKILL.md over the line budget fails; one at the budget passes', () => {
@@ -37,7 +38,7 @@ test('a SKILL.md over the line budget fails; one at the budget passes', () => {
   const at = fixtureRepo(SKILL_LINE_BUDGET)
   try {
     const bad = validate(over).problems
-    assert.ok(bad.some((p) => /past the 150-line budget/.test(p.message)), JSON.stringify(bad))
+    assert.ok(bad.some((p) => /past the 80-line budget/.test(p.message)), JSON.stringify(bad))
     assert.deepEqual(validate(at).problems, [])
   } finally {
     rmSync(over, { recursive: true, force: true })
@@ -45,34 +46,23 @@ test('a SKILL.md over the line budget fails; one at the budget passes', () => {
   }
 })
 
-test('a hooks.json whose command does not exist fails; one whose command exists passes', () => {
-  const hooks = (script) =>
-    JSON.stringify({
-      hooks: {
-        SessionStart: [
-          { matcher: 'startup', hooks: [{ type: 'command', command: `node "\${CLAUDE_PLUGIN_ROOT}/hooks/${script}"` }] },
-        ],
-      },
-    })
-  const dangling = fixtureRepo(10, (dir) => {
-    mkdirSync(join(dir, 'hooks'))
-    writeFileSync(join(dir, 'hooks', 'hooks.json'), hooks('missing.mjs'))
+test('a model name anywhere under skills/ fails; tier words pass', () => {
+  const named = fixtureRepo(10, (dir) => {
+    mkdirSync(join(dir, 'skills', 'demo', 'scripts'))
+    writeFileSync(join(dir, 'skills', 'demo', 'scripts', 'x.mjs'), "const model = 'sonnet'\n")
   })
-  const wired = fixtureRepo(10, (dir) => {
-    mkdirSync(join(dir, 'hooks'))
-    writeFileSync(join(dir, 'hooks', 'hooks.json'), hooks('session-start.mjs'))
-    writeFileSync(join(dir, 'hooks', 'session-start.mjs'), 'console.log("{}")\n')
-  })
-  const broken = fixtureRepo(10, (dir) => {
-    mkdirSync(join(dir, 'hooks'))
-    writeFileSync(join(dir, 'hooks', 'broken.mjs'), 'const = \n')
+  const tiers = fixtureRepo(10, (dir) => {
+    mkdirSync(join(dir, 'skills', 'demo', 'scripts'))
+    writeFileSync(join(dir, 'skills', 'demo', 'scripts', 'x.mjs'), "const tiers = ['small', 'medium', 'large']\n")
   })
   try {
-    assert.ok(validate(dangling).problems.some((p) => /missing\.mjs, which does not exist/.test(p.message)))
-    assert.deepEqual(validate(wired).problems, [])
-    assert.ok(validate(broken).problems.some((p) => /does not parse/.test(p.message)))
+    assert.ok(validate(named).problems.some((p) => /names the model "sonnet"/.test(p.message)))
+    assert.deepEqual(validate(tiers).problems, [])
+    for (const name of ['haiku', 'Opus', 'fable', 'gpt-5', 'gemini-2.5-pro']) assert.ok(MODEL_NAME.test(name), name)
+    for (const word of ['small', 'medium', 'large', 'inherit', 'codex', 'claude', 'opencode']) assert.ok(!MODEL_NAME.test(word), word)
   } finally {
-    for (const d of [dangling, wired, broken]) rmSync(d, { recursive: true, force: true })
+    rmSync(named, { recursive: true, force: true })
+    rmSync(tiers, { recursive: true, force: true })
   }
 })
 

@@ -4,12 +4,15 @@
 // and CI workflows and reports the commands that define "green" for this repo.
 //
 // Usage:
-//   node detect-gates.mjs [--cwd <dir>] [--pretty]
+//   node detect-gates.mjs [--cwd <dir>] [--run] [--pretty]
 //
-// Output: JSON on stdout.
+// Output: JSON on stdout. With --run, every detected gate is executed once and
+// the output is compact: each command, its exit code, and at most 10 lines of
+// output when it failed. The exit code is 1 when a blocking gate failed.
 
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join, resolve, basename } from 'node:path'
+import { spawnSync } from 'node:child_process'
 
 const KIND_ORDER = ['typecheck', 'lint', 'format', 'test', 'build', 'e2e', 'check', 'ci']
 
@@ -37,11 +40,11 @@ const BODY_DENY = /(--watch\b|--fix\b|--write\b|nodemon|vite dev|next dev)/
 
 const args = process.argv.slice(2)
 if (args.includes('--help')) {
-  process.stdout.write('Usage: node detect-gates.mjs [--cwd <dir>] [--pretty]\n\nExample: node detect-gates.mjs --cwd . --pretty\n')
+  process.stdout.write('Usage: node detect-gates.mjs [--cwd <dir>] [--run] [--pretty]\n\nExample: node detect-gates.mjs --cwd . --run\n')
   process.exit(0)
 }
 for (let i = 0; i < args.length; i += 1) {
-  if (args[i] === '--pretty') continue
+  if (args[i] === '--pretty' || args[i] === '--run') continue
   if (args[i] === '--cwd') {
     if (!args[i + 1]) {
       process.stderr.write('--cwd needs a value.\n')
@@ -304,8 +307,39 @@ gates.sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind))
 
 if (!gates.length) {
   notes.push(
-    'No verification command detected. verify will fall back to behaviour proof only — say so in the report.',
+    'No verification command detected. Nothing was proven; verify reports UNPROVEN.',
   )
+}
+
+if (args.includes('--run')) {
+  const ran = gates.map(runGate)
+  const failed = ran.some((g) => g.exit !== 0 && g.blocking !== false)
+  const out = { ok: ran.length ? !failed : null, gates: ran }
+  if (notes.length) out.notes = notes
+  process.stdout.write(JSON.stringify(out, null, pretty ? 2 : 0) + '\n')
+  process.exit(failed ? 1 : 0)
+}
+
+// One gate, once, non-interactive. A gate that did not finish has exit -1: it
+// is a failure to prove, never a pass.
+function runGate(gate) {
+  const r = spawnSync(gate.cmd, {
+    cwd,
+    shell: true,
+    encoding: 'utf8',
+    timeout: gate.timeout_s * 1000,
+    maxBuffer: 64 * 1024 * 1024,
+    env: { ...process.env, CI: process.env.CI || '1' },
+  })
+  const exit = typeof r.status === 'number' ? r.status : -1
+  const row = { cmd: gate.cmd, exit }
+  if (!gate.blocking) row.blocking = false
+  if (exit !== 0) {
+    const why = r.error ? [`${r.error.code || r.error.message}${r.error.code === 'ETIMEDOUT' ? ` after ${gate.timeout_s}s` : ''}`] : []
+    const lines = `${r.stdout || ''}\n${r.stderr || ''}`.split('\n').map((l) => l.trimEnd()).filter(Boolean)
+    row.out = [...why, ...lines.slice(-(10 - why.length))].join('\n')
+  }
+  return row
 }
 
 const result = {

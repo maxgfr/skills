@@ -20,8 +20,7 @@ test('the Codex plugin exposes explicit-only public skills and registers no hook
     'Use $build to implement the approved plan.',
     "Use $verify to run the repository's verification gates.",
   ])
-  const hooks = JSON.parse(readFileSync(join(root, 'hooks', 'hooks.json'), 'utf8'))
-  assert.deepEqual(hooks.hooks, {})
+  assert.equal(existsSync(join(root, 'hooks')), false, 'the plugin ships no hooks')
   for (const skill of ['blueprint', 'build', 'verify']) {
     const skillMd = readFileSync(join(root, 'skills', skill, 'SKILL.md'), 'utf8')
     const metadata = readFileSync(join(root, 'skills', skill, 'agents', 'openai.yaml'), 'utf8')

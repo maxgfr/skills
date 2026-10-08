@@ -31,39 +31,12 @@ Read [AGENTS.md](./AGENTS.md) before writing the body — it covers what belongs
 
 ## Shared copies
 
-Some files ship in more than one skill, byte-identical:
+`scripts/models.mjs` ships in both `build` and `verify`, byte-identical. A skill
+installed on its own with `--skill build` has to be complete, and a relative
+link into a sibling directory would install as a dangling reference.
 
-| File | Ships in |
-|---|---|
-| `references/crosscheck.md`, `scripts/schema-plan.json`, `scripts/schema-diff.json` | `blueprint`, `verify` |
-| `scripts/peer-run.mjs` | `blueprint`, `verify`, `build` |
-| `scripts/forbidden-repairs.mjs` | `verify`, `build` |
-
-That is deliberate. A skill installed on its own with `--skill build` has to be
-complete, and a relative link into a sibling directory would install as a
-dangling reference — the exact failure `npm run validate` exists to catch.
-
-So edit one copy and `cp` it to the others. `tests/crosscheck-sync.test.mjs`
-fails if you forget. Do not solve this by moving the files to a shared directory
-and pointing `../` at them: it passes validation today only because the
-reference resolver does not implement the containment check its own comment
-describes.
-
-## Optional hook helpers
-
-`hooks/hooks.json` intentionally registers no hooks: every public skill requires
-explicit invocation. The dependency-free `session-start.mjs` and
-`stop-guard.mjs` scripts remain optional helpers for users who wire them
-manually. They are tested as processes in `tests/hooks.test.mjs`; run them by
-hand with the JSON a host would send:
-
-```bash
-node hooks/session-start.mjs --plain        # what gets injected
-printf '{"session_id":"x","cwd":"%s","stop_hook_active":false}' "$PWD" | node hooks/stop-guard.mjs
-```
-
-A Stop hook that blocks when it should not is worse than one that never fires:
-every new path the guard treats as source needs a test in both directions.
+So edit the `build` copy and `cp` it to `verify`. `tests/models.test.mjs` fails
+if you forget.
 
 ## Changing behaviour
 
@@ -90,17 +63,17 @@ the message semantic-release actually reads.
 
 Before shipping a behaviour change, run the skill against a repo where you already know the answer — and include a case where it should **fail**. A skill that has only ever been observed passing has never been tested.
 
-Running `verify` on **this** repo is a special case: `forbidden-repairs.mjs` and
+Running `build` on **this** repo is a special case: `forbidden-repairs.mjs` and
 its tests have to contain every pattern the guard refuses, so the guard flags its
 own source. That is what `--allow` is for — it downgrades a rule to a warning
 instead of failing the round:
 
 ```bash
-node skills/verify/scripts/forbidden-repairs.mjs --since HEAD \
+node skills/build/scripts/forbidden-repairs.mjs --since HEAD \
   --allow test-skip --allow suppression
 ```
 
 Never widen a rule to make this go away. An escape hatch the guard honours from
 inside the diff is one a cheating fixer can write for itself.
 
-For `verify` specifically, the honest test is a repo with a deliberately broken change: a gate that fails, a requirement quietly dropped, a bug the tests do not cover, and a test that passes with the fix reverted. It should catch all four, and its fix loop should refuse to make the gate green by suppressing it.
+For `verify` specifically, the honest test is a repo with a deliberately broken change: a gate that fails, a plan requirement quietly dropped, and a bug the tests do not cover. It should report all three as `FAIL`.

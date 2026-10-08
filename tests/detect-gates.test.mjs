@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -150,4 +152,47 @@ test('an empty directory yields no gates and says so', () => {
   const r = detect('.')
   assert.equal(r.gates.length, 0)
   assert.ok(r.notes.some((n) => /no verification command/i.test(n)))
+})
+
+// --run executes the gates. Always against a throwaway repo: run against this
+// one, `npm test` would run this very file again.
+function runIn(scripts) {
+  const dir = mkdtempSync(join(tmpdir(), 'detect-run-'))
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'x', private: true, scripts }))
+  writeFileSync(join(dir, 'package-lock.json'), '{}')
+  const r = spawnSync(process.execPath, [SCRIPT, '--cwd', dir, '--run'], { encoding: 'utf8' })
+  rmSync(dir, { recursive: true, force: true })
+  return { exit: r.status, out: JSON.parse(r.stdout), raw: r.stdout }
+}
+
+test('--run: all gates green is ok, exit 0, one compact line with no output kept', () => {
+  const r = runIn({ test: 'node -e "console.log(1)"', lint: 'node -e ""' })
+  assert.equal(r.exit, 0)
+  assert.equal(r.out.ok, true)
+  assert.deepEqual(r.out.gates.map((g) => [g.cmd, g.exit, g.out]), [['npm run lint', 0, undefined], ['npm run test', 0, undefined]])
+  assert.equal(r.raw.trim().split('\n').length, 1)
+})
+
+test('--run: a failing blocking gate is not ok, exits 1, and keeps at most 10 lines', () => {
+  const r = runIn({ test: `node -e "for (let i = 0; i < 30; i++) console.log('line ' + i); process.exit(3)"` })
+  assert.equal(r.exit, 1)
+  assert.equal(r.out.ok, false)
+  const [gate] = r.out.gates
+  assert.equal(gate.exit, 3)
+  assert.ok(gate.out.split('\n').length <= 10)
+  assert.match(gate.out, /line 29/)
+})
+
+test('--run: a failing non-blocking gate is reported but does not sink ok', () => {
+  const r = runIn({ test: 'node -e ""', 'test:e2e': 'node -e "process.exit(1)"' })
+  assert.equal(r.exit, 0)
+  assert.equal(r.out.ok, true)
+  assert.equal(r.out.gates.find((g) => g.cmd === 'npm run test:e2e').blocking, false)
+})
+
+test('--run: no gate at all is ok null — nothing was proven', () => {
+  const r = runIn({})
+  assert.equal(r.exit, 0)
+  assert.equal(r.out.ok, null)
+  assert.deepEqual(r.out.gates, [])
 })

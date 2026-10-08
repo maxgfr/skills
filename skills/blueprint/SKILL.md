@@ -9,142 +9,36 @@ metadata:
 
 # blueprint
 
-A plan fails for one of two reasons: it answered a question the user never
-agreed to, or it asserted something about the repository that is not true. This skill is built against both.
+Write a plan that a `small`-tier model can implement step by step without having
+been in this conversation. You plan; you do not implement. Paths are relative to
+this skill's directory.
 
-All paths below are relative to this skill's directory.
-## Three laws
+## Laws
 
-1. **No design while the frontier is open.** Every unsettled decision that could
-   change observable behaviour is put to the user before an approach is proposed.
-   The grill stops on a structural condition, not on feeling thorough.
-2. **No repository claim without `path:line`.** A fact you cannot cite is an
-   assumption, and it gets written down as one or asked about — never asserted.
-3. **The artifact is the promise.** What `verify` reads later is the file, not
-   this conversation. Anything that lives only in the chat is lost.
-
-Violating the letter of a law is violating its spirit.
+1. **No design while a decision is open.** Every unsettled choice that could change behavior goes to the user first.
+2. **No repository claim without `path:line`.** A fact you cannot cite gets asked about or written down as an assumption.
+3. **The file is the promise.** `build` and `verify` read the plan, not this chat.
 
 ## Invocations
 
-Syntax: Codex uses `$blueprint`; the Claude plugin uses `/maxgfr:blueprint`;
-a standalone Claude skill uses `/blueprint`. The table
-shows the arguments after that host-specific name.
+`$blueprint` (Codex), `/maxgfr:blueprint` (Claude plugin), `/blueprint` (standalone). Arguments:
+none (write a new plan), `<path>` (revise that plan), `auto` (after approval, run build then verify).
 
-| | |
-|---|---|
-| no arguments | **Default.** Orient → grill → ground → design → write → approve. |
-| `grill` | The interview only. Stops at the locked constraints; designs nothing. |
-| `crosscheck` | + one read-only consultation of the other CLI agent before approval. |
-| `<path>` | Harden an existing plan instead of writing a new one. |
-| `auto` | After approval, run `build` then `verify` on the plan — same turn, no prompt between. |
+## Phases
 
-## Phase 1 — Orient and classify
+1. **Orient.** Read the request, the `AGENTS.md` / `CLAUDE.md` in play, and the smallest useful slice of the repo, so you never ask what the repo answers. Scale the process to the change. The approval gate never scales down.
+2. **Grill.** `references/grill.md`. Skip it only when no open decision could change behavior, scope, an interface, the data or the acceptance criterion.
+3. **Ground.** Reopen the files the answers implicate. Every fact the plan relies on gets a `path:line`. A file to create is named as new.
+4. **Write.** `references/artifact.md`, to `docs/plans/<YYYY-MM-DD>-<slug>.md`, with `status: awaiting-approval`. If one local pattern dominates, use it. Otherwise pick an approach and state in one line why it wins.
+5. **Approve.** Show the path and ask for approval in those words. Before the yes, the plan file is the only thing you write.
 
-Read the request, the `AGENTS.md` / `CLAUDE.md` that govern the files in play,
-and the smallest useful slice of the repository. This is reconnaissance, not
-design: its purpose is to stop you asking the user something the repo answers.
+On approval, set `status: approved`. Then:
 
-Then judge how much process the change deserves. A local, reversible change with
-one obvious target does not need three approaches and eight questions — say so
-and keep the ceremony proportional. What never scales down is the approval gate.
+- `auto` → invoke `build <path> then verify` in the same turn.
+- otherwise → one line: the path, and the build call that takes it.
 
-## Phase 2 — Grill
+## Does not
 
-`references/grill.md`. Design tree, frontier, numbered rounds, a recommended
-answer on every question.
-
-Skip it only when no unsettled decision could change observable behaviour,
-scope, an interface, the data, the failure policy or the acceptance criterion.
-**"It seems obvious" is not a skip signal** — it is the feeling that precedes
-building the wrong thing.
-
-Under `blueprint grill`, stop when the frontier empties: report the locked
-constraints and go no further.
-
-## Phase 3 — Ground
-
-Reopen the files the locked answers implicate. Every fact the plan depends on
-gets a `path:line`. A file you intend to create is named as new; an existing
-path, symbol, or command is never guessed — a plausible-looking wrong path costs
-the implementer an hour and costs you their trust.
-
-## Phase 4 — Design
-
-Architectural work gets 2–3 genuinely distinct approaches, each with its
-trade-offs, your recommendation, and the concrete reason the others lose.
-
-Bounded work where one local pattern already dominates gets that pattern and the
-evidence that removed the choice. Inventing alternatives you would never pick,
-so the plan looks considered, wastes the reader's attention.
-
-## Phase 5 — Write it
-
-`references/artifact.md` — the skeleton, step sizing, the anti-vagueness list,
-and the three self-review passes. Written to
-`docs/plans/<YYYY-MM-DD>-<slug>.md`, which is where `verify` already looks.
-
-## Phase 6 — Crosscheck (optional)
-
-`references/crosscheck.md`. Freeze the plan first — write it to disk before you
-consult, or "adjudication" is just rewriting your position to match the reply
-and you will not be able to tell. Then run `scripts/peer-run.mjs --mode plan`,
-passing `--host` as the agent you are running inside; the peer is the other one.
-
-Accepted objections visibly change the plan; deferred material ones block
-approval; rejected ones stay in the appendix and never enter the executable sections.
-
-If the peer is unavailable, say so and proceed host-only — unless the user asked
-for the crosscheck, in which case stop rather than relabel your own review.
-
-## Phase 7 — Approve, then hand off
-
-Present the artifact and ask for approval in as many words. Earlier enthusiasm
-for the idea is not approval of a plan they had not yet seen.
-
-Before that yes: **nothing is implemented, no source file is touched, no
-worktree is made, nothing is committed, and no command that changes the project
-is run.** The plan itself and the crosscheck's own files are the exception, and
-have to be — the artifact must exist before it can be shown, and freezing it on
-disk before consulting the peer is what makes the adjudication honest. So the
-line is what the write is *for*: `docs/plans/<file>` and
-`.agents/crosscheck/…` are the deliverable, everything else is the work, and
-the work waits.
-
-Then, on the yes, set `status: approved` in the file and hand off. When the user explicitly requests `build` and `verify` with `auto`, invoke `build docs/plans/<file> then verify`, whose terminal handoff is
-`verify light <file>`, in the same turn — no prompt between approval and verdict; the gate was
-the approval. A bare `auto` does not authorize another skill. Otherwise offer it:
-> The plan is at `docs/plans/<file>`, written to be executed by an agent that
-> was not in this conversation. Invoke `build` with that path to implement it
-> in a worktree, then invoke `verify light` with the same path. Now, or clear first?
-
-Run the self-containment check in `references/artifact.md` **before** offering
-it. If a step still leans on something only this conversation knows, that is a
-gap in the plan, not a reason to keep the context. **Name the path** on both
-calls: `verify light` ranks the host's own plan artifact above `docs/plans/`;
-bare `verify` runs gates only and does not analyze the plan.
-
-## What this does not do
-
-- **Does not implement.** Approval ends this skill; it does not start the work.
-- **Does not verify.** It never says code works — that is `verify`'s job, and
-  `blueprint` has no evidence to say it with.
-- **Does not decide for the user.** A delegated recommendation is locked and
-  marked delegated. An unknown becomes a question with a decision criterion,
-  never a silent assumption.
-- **Does not renumber `S-xxx`.** Ever.
-- **Does not merge two plans.** The peer objects against steps; the host stays
-  the sole author.
-- **Does not send secrets or unrelated repository content to the peer**, and
-  never gives it a tool that can write.
-
-## Red flags
-
-| Thought | Reality |
-|---|---|
-| "I know what they want" | Then Q-001 costs one line and confirms it. |
-| "The file is probably called that" | Open it. A guessed path is a lie with a plausible shape. |
-| "I'll note the constraint in my summary" | The summary is not the promise. Put it in the artifact. |
-| "They said build it, so I can start" | They approved an idea, not a plan they had not read. |
-| "The peer objected, so it must be right" | An accept with no visible delta is capitulation. |
-| "No objections survived, so it's solid" | Argue the other side once, then say that. |
+- Implement, make a worktree, commit, or run a command that changes the project.
+- Decide for the user. "Your call" is locked as delegated; "I don't know" stays a question.
+- Renumber `S-xxx`.

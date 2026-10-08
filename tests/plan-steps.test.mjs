@@ -24,22 +24,36 @@ function cli(cwd, ...extra) {
   }
 }
 
-test('parsePlan reads the status, the goal, the order and every step field', () => {
+test('parsePlan reads the status and only the step fields the build uses', () => {
   const plan = parsePlan(fixture('approved.md'))
   assert.equal(plan.status, 'approved')
-  assert.match(plan.goal, /429/)
-  assert.deepEqual(plan.executionOrder, ['S-001', 'S-002', 'S-003'])
   assert.equal(plan.steps.length, 3)
   const s2 = plan.steps[1]
+  assert.deepEqual(Object.keys(s2), ['id', 'title', 'files', 'dependsOn', 'verifyCmd', 'verifyExpected', 'raw'])
   assert.equal(s2.id, 'S-002')
   assert.equal(s2.title, 'Wire the middleware')
   assert.deepEqual(s2.files, ['src/limit/middleware.ts', 'src/api/router.ts'])
   assert.deepEqual(s2.dependsOn, ['S-001'])
-  assert.deepEqual(s2.implements, ['Q-001'])
   assert.equal(s2.verifyCmd, 'npx vitest run tests/api/limit.test.ts')
   assert.equal(s2.verifyExpected, '2 passed')
-  assert.match(s2.doneWhen, /429/)
-  assert.match(s2.raw, /^### S-002/)
+  assert.match(s2.raw, /^### S-002[\s\S]*429/)
+})
+
+test('the schedule carries the three-attempt ladder and the models for the host', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'plan-steps-'))
+  try {
+    writeFileSync(join(dir, 'plan.md'), fixture('approved.md'))
+    mkdirSync(join(dir, '.agents'))
+    writeFileSync(join(dir, '.agents', 'models.json'), JSON.stringify({ alpha: { small: 'tiny', medium: 'mid' } }))
+    const r = cli(dir, '--plan', 'plan.md', '--host', 'alpha')
+    assert.equal(r.ok, true, JSON.stringify(r))
+    assert.deepEqual(r.attempts, ['small', 'small', 'medium'])
+    assert.deepEqual(r.models, { small: 'tiny', medium: 'mid', large: null })
+    // No host: every tier inherits the session model.
+    assert.deepEqual(cli(dir, '--plan', 'plan.md').models.small, null)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 test('a line range on a Files entry does not make it a different file', () => {

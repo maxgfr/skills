@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const root = resolve(here, '..')
-const SCRIPT = join(root, 'skills', 'verify', 'scripts', 'forbidden-repairs.mjs')
+const SCRIPT = join(root, 'skills', 'build', 'scripts', 'forbidden-repairs.mjs')
 
 function scan(patch, extraArgs = []) {
   try {

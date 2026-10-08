@@ -14,7 +14,7 @@ skills/<name>/
 
 ## Rules
 
-**`SKILL.md` is a router, not a manual.** If it grows past ~150 lines, the excess belongs in `references/`. A model reads the whole SKILL.md every time it triggers; it reads a reference only when it needs that phase.
+**`SKILL.md` is a router, not a manual.** Past 80 lines it fails validation; the excess belongs in `references/`. A model reads the whole SKILL.md every time it triggers; it reads a reference only when it needs that phase.
 
 **The description is the trigger.** It decides whether the skill fires at all. Say *when to use this*, in the words a user would actually type — including the ones they type in French. `npm run validate` rejects a description with no trigger clause.
 
@@ -25,6 +25,10 @@ skills/<name>/
 **Scripts stay dependency-free.** Node's standard library only. These run on someone else's machine, inside someone else's agent, without an install step.
 
 **Instructions are imperative and concrete.** "Report the first failing lines, at most 15" beats "summarise the failure appropriately". Where a sub-agent brief exists, write it verbatim in the reference so it can be pasted, not paraphrased.
+
+**Tiers, never model names.** Skills say `small`, `medium` or `large`; `scripts/models.mjs` maps a tier to a name from the user's `models.json`. `npm run validate` fails on a model name anywhere under `skills/`.
+
+**Small output.** Sub-agents return compact JSON with capped fields; a skill's final output is a few lines, not prose or a report file.
 
 **Say what the skill will not do.** A skill that lists its refusals is one you can trust with a loop.
 

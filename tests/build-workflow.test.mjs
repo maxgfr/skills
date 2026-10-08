@@ -1,357 +1,164 @@
-// The build workflow decides what "done" means for a step, and it is the part
-// no validator reaches: it runs inside the host's Workflow runtime. So it gets
-// that runtime here — stubbed agents returning scripted results — and every
-// way it could report `built` over a step that was not, or start work before
-// it was allowed to, is a scenario below.
+// The build workflow decides what "done" means for a step, and it runs inside
+// the host's Workflow runtime, which no validator reaches. So it gets that
+// runtime here — stubbed agents returning scripted results.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const here = dirname(fileURLToPath(import.meta.url))
-const root = resolve(here, '..')
-const WORKFLOW = join(root, 'skills', 'build', 'workflows', 'build.mjs')
-
-const source = readFileSync(WORKFLOW, 'utf8').replace(/^export\s+const\s+meta\s*=/m, 'const meta =')
-
-const compiled = new Function(
-  'args',
-  'agent',
-  'parallel',
-  'pipeline',
-  'phase',
-  'log',
-  'budget',
-  `return (async () => {\n${source}\n})()`,
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const source = readFileSync(join(root, 'skills', 'build', 'workflows', 'build.mjs'), 'utf8').replace(
+  /^export\s+const\s+meta\s*=/m,
+  'const meta =',
 )
-
+const compiled = new Function('args', 'agent', 'parallel', 'phase', 'log', `return (async () => {\n${source}\n})()`)
 const parallel = (thunks) => Promise.all(thunks.map((t) => Promise.resolve().then(t).catch(() => null)))
-const pipeline = async (items, ...stages) => {
-  const out = []
-  for (const [i, item] of items.entries()) {
-    let value = item
-    for (const stage of stages) value = await stage(value, item, i)
-    out.push(value)
-  }
-  return out
-}
 
-const step = (id, dependsOn, files) => ({
+const step = (id, dependsOn) => ({
   id,
   title: `step ${id}`,
-  files,
+  files: [`src/${id}.ts`],
   dependsOn,
   verifyCmd: `npm test -- ${id}`,
   verifyExpected: 'passes',
-  raw: `### ${id} — step ${id}\n- **Files:** ${files.map((f) => `\`${f}\``).join(' · ')}\n- **Depends on:** ${dependsOn.join(', ') || 'none'}\n- **Verify:** \`npm test -- ${id}\` → passes`,
+  raw: `### ${id} — step ${id}\n- **Verify:** \`npm test -- ${id}\` → passes`,
 })
-
-// S-001 ← S-002 ← S-003: a chain.
-const CHAIN = [step('S-001', [], ['src/a.ts']), step('S-002', ['S-001'], ['src/b.ts']), step('S-003', ['S-002'], ['src/c.ts'])]
-const CHAIN_WAVES = [['S-001'], ['S-002'], ['S-003']]
-
-// S-001, then S-002 and S-003 side by side.
-const FAN = [step('S-001', [], ['src/a.ts']), step('S-002', ['S-001'], ['src/b.ts']), step('S-003', ['S-001'], ['src/c.ts'])]
+const CHAIN = [step('S-001', []), step('S-002', ['S-001']), step('S-003', ['S-002'])]
+const FAN = [step('S-001', []), step('S-002', ['S-001']), step('S-003', ['S-001'])]
 const FAN_WAVES = [['S-001'], ['S-002', 'S-003']]
 
-const IMPL_OK = { done_claimed: true, files_touched: ['src/x.ts'], verify_cmd: 'npm test', verify_exit_code: 0, verify_output: 'ok' }
-const REVIEW_OK = { spec_ok: true, quality_ok: true, verify_exit_code: 0, verify_output: 'ok', issues: [] }
-const GUARD_CLEAN = { verdict: 'CLEAN', violations: [] }
+const IMPL_OK = { done: true, files: ['src/x.ts'], exit: 0, out: 'ok' }
+const REVIEW_OK = { ok: true, exit: 0, guard: 'CLEAN', issues: [] }
+const REJECT = { ok: false, exit: 1, guard: 'CLEAN', issues: ['src/S-001.ts:3 — missing branch'] }
+const HAPPY = { 'impl:': IMPL_OK, 'review:': REVIEW_OK }
+const MODELS = { small: 'tier-s', medium: 'tier-m', large: null }
 
-// Longest pattern wins, so `review:S-002` beats `review:` no matter which order
-// the scenario spread them in. Matching on insertion order instead means a test
-// can silently exercise the generic stub it thought it had overridden.
+// Longest pattern wins, so `review:S-002` beats `review:`.
 function makeAgent(script, calls) {
   const patterns = Object.keys(script).sort((a, b) => b.length - a.length)
   return async (prompt, opts = {}) => {
-    const label = opts.label || 'unlabelled'
-    calls.push(label)
-    for (const pattern of patterns) {
-      if (label === pattern || label.startsWith(pattern)) {
-        const value = script[pattern]
-        return typeof value === 'function' ? value(prompt, opts, label) : value
-      }
-    }
-    return null
+    calls.push({ label: opts.label, model: opts.model, prompt })
+    const hit = patterns.find((p) => opts.label === p || opts.label.startsWith(p))
+    const value = hit ? script[hit] : null
+    return typeof value === 'function' ? value(prompt, opts) : value
   }
 }
 
-function run(argsOverride, script, logs = []) {
+async function run(over, script) {
   const calls = []
-  const args = {
-    cwd: '/wt',
-    planPath: 'docs/plans/2026-01-01-thing.md',
-    steps: CHAIN,
-    waves: CHAIN_WAVES,
-    skillDir: '/skill',
-    runDir: '/wt/.agents/build/20260101-000000',
-    baseline: 'abc123',
-    mode: 'workflow',
-    host: 'claude',
-    ...argsOverride,
-  }
-  return compiled(args, makeAgent(script, calls), parallel, pipeline, () => {}, (m) => logs.push(String(m)), {
-    total: null,
-    spent: () => 0,
-    remaining: () => Infinity,
-  }).then((result) => ({ result, calls }))
+  const args = { cwd: '/wt', planPath: 'docs/plans/x.md', steps: CHAIN, skillDir: '/skill', baseline: 'abc', host: 'claude', models: MODELS, ...over }
+  const result = await compiled(args, makeAgent(script, calls), parallel, () => {}, () => {})
+  return { result, calls, labels: calls.map((c) => c.label) }
 }
 
-const HAPPY = { 'impl:': IMPL_OK, 'review:': REVIEW_OK, 'guard:': GUARD_CLEAN, summary: 'written' }
-
-test('a clean build lands every step and hands off to verify light on the plan path', async () => {
-  const { result, calls } = await run({}, HAPPY)
+test('a clean build is one line per step and hands off to verify on the plan', async () => {
+  const { result } = await run({}, HAPPY)
   assert.equal(result.status, 'built')
-  assert.deepEqual(result.steps.map((s) => s.status), ['done', 'done', 'done'])
-  assert.equal(result.next, '/verify light docs/plans/2026-01-01-thing.md')
-  assert.match(result.residual_risk[0], /\/verify light, which has not run yet/)
-  assert.equal(result.stopped_by, null)
-  assert.ok(calls.includes('summary'))
+  assert.deepEqual(result.lines, ['S-001 done 0 small', 'S-002 done 0 small', 'S-003 done 0 small'])
+  assert.equal(result.next, '/verify docs/plans/x.md')
 })
 
-test('the handoff uses the active host syntax', async () => {
-  assert.equal((await run({ host: 'codex' }, HAPPY)).result.next, '$verify light docs/plans/2026-01-01-thing.md')
-  assert.equal(
-    (await run({ host: 'claude', namespace: 'maxgfr' }, HAPPY)).result.next,
-    '/maxgfr:verify light docs/plans/2026-01-01-thing.md',
-  )
-  assert.equal(
-    (await run({ host: null }, HAPPY)).result.next,
-    'invoke the verify skill light docs/plans/2026-01-01-thing.md',
-  )
+test('the handoff uses the host syntax it was given, and never guesses one', async () => {
+  assert.equal((await run({ host: 'codex' }, HAPPY)).result.next, '$verify docs/plans/x.md')
+  assert.equal((await run({ namespace: 'maxgfr' }, HAPPY)).result.next, '/maxgfr:verify docs/plans/x.md')
+  assert.equal((await run({ host: null }, HAPPY)).result.next, 'invoke the verify skill with docs/plans/x.md')
 })
 
-test('nothing precedes the first implementer — no question, no summary, no confirmation', async () => {
-  // The user's rule: one invocation launches the build. Phase 0 is
-  // deterministic and outside the workflow; inside it, the first agent spent
-  // is the one that writes code.
+test('implementers get the small model and reviewers the medium one', async () => {
   const { calls } = await run({}, HAPPY)
-  assert.ok(calls[0].startsWith('impl:'), `first agent call was ${calls[0]}`)
+  for (const c of calls) assert.equal(c.model, c.label.startsWith('impl:') ? 'tier-s' : 'tier-m', c.label)
 })
 
-test('a wave waits for the wave before it', async () => {
-  const { calls } = await run({ steps: FAN, waves: FAN_WAVES }, HAPPY)
-  const at = (label) => calls.indexOf(label)
-  assert.ok(at('review:S-001') >= 0)
-  assert.ok(at('impl:S-002') > at('review:S-001'), 'S-002 started before S-001 was reviewed')
-  assert.ok(at('impl:S-003') > at('review:S-001'), 'S-003 started before S-001 was reviewed')
-  assert.ok(at('impl:S-002') > at('guard:S-001'), 'S-002 started before S-001 was guarded')
+test('an unset tier passes no model, so the agent inherits the session one', async () => {
+  const { calls } = await run({ models: {} }, HAPPY)
+  assert.ok(calls.every((c) => c.model === undefined))
 })
 
-test('a step whose Verify command fails is retried once, then blocked, and its dependents are skipped', async () => {
-  const { result, calls } = await run(
-    {},
-    {
-      'impl:S-002': { ...IMPL_OK, verify_exit_code: 1, verify_output: '1 failed' },
-      'review:S-002': { ...REVIEW_OK, verify_exit_code: 1, spec_ok: false, issues: [{ file: 'src/b.ts', line: 3, issue: 'test fails', kind: 'spec' }] },
-      ...HAPPY,
-    },
-  )
+test('a rejected step escalates small, small with the issues, then medium, then blocks', async () => {
+  const { result, calls } = await run({}, { ...HAPPY, 'review:S-001': REJECT })
+  const impls = calls.filter((c) => c.label.startsWith('impl:S-001'))
+  assert.deepEqual(impls.map((c) => c.model), ['tier-s', 'tier-s', 'tier-m'])
+  assert.ok(!impls[0].prompt.includes('missing branch'))
+  assert.ok(impls[1].prompt.includes('src/S-001.ts:3 — missing branch'), 'the retry did not carry the issues')
   assert.equal(result.status, 'blocked')
-  const s2 = result.steps.find((s) => s.id === 'S-002')
-  assert.equal(s2.status, 'blocked')
-  assert.equal(s2.attempts, 2)
-  assert.equal(calls.filter((c) => c === 'impl:S-002').length, 1)
-  assert.equal(calls.filter((c) => c === 'impl:S-002:retry').length, 1)
-  assert.ok(calls.some((c) => c === 'impl:S-002:retry'), 'no retry was attempted')
-  const s3 = result.steps.find((s) => s.id === 'S-003')
-  assert.equal(s3.status, 'skipped')
-  assert.ok(result.skipped.some((s) => s.id === 'S-003' && s.because === 'S-002'))
-  assert.ok(!calls.includes('impl:S-003'), 'a dependent of a blocked step was implemented anyway')
+  assert.match(result.lines[0], /^S-001 blocked 1 medium /)
+  assert.deepEqual(result.lines.slice(1), ['S-002 skipped - - needs S-001', 'S-003 skipped - - needs S-002'])
   assert.equal(result.next, null)
 })
 
-test('workflow consumes the same serialized retry policy as the fallback adapter', async () => {
-  const { result, calls } = await run(
-    { policy: { max_attempts: 1 } },
-    { ...HAPPY, 'review:S-001': { ...REVIEW_OK, spec_ok: false, issues: [{ file: 'src/a.ts', line: 1, issue: 'missing', kind: 'spec' }] } },
-  )
-  assert.equal(result.steps[0].attempts, 1)
-  assert.ok(!calls.includes('impl:S-001:retry'))
+test('the medium attempt can land a step the small ones could not', async () => {
+  let n = 0
+  const { result } = await run({ steps: [CHAIN[0]] }, { ...HAPPY, 'review:': () => (++n < 3 ? REJECT : REVIEW_OK) })
+  assert.deepEqual(result.lines, ['S-001 done 0 medium'])
 })
 
-test('a reviewer that rejects the spec blocks the step even when the implementer reported green', async () => {
-  const { result } = await run(
-    {},
-    {
-      'review:S-001': { ...REVIEW_OK, spec_ok: false, issues: [{ file: 'src/a.ts', line: 1, issue: 'Preserve violated', kind: 'spec' }] },
-      ...HAPPY,
-    },
-  )
-  assert.equal(result.steps[0].status, 'blocked')
+test('a small implementer that reports blocked_by goes straight to medium; a medium one blocks', async () => {
+  const blocked = { ...IMPL_OK, done: false, exit: -1, blocked_by: 'needs a migration' }
+  const { result, labels } = await run({ steps: [CHAIN[0]] }, { ...HAPPY, 'impl:S-001': blocked })
+  assert.deepEqual(labels, ['impl:S-001:1', 'impl:S-001:3'])
+  assert.match(result.lines[0], /^S-001 blocked - medium blocked_by: needs a migration/)
+})
+
+test('a reviewer that rejects is not overruled by an implementer that reported green', async () => {
+  const { result } = await run({ steps: [CHAIN[0]], attempts: ['small'] }, { ...HAPPY, 'review:': { ...REVIEW_OK, ok: false } })
   assert.equal(result.status, 'blocked')
 })
 
-test("a reviewer whose own run of the Verify command fails is not overruled by the implementer's", async () => {
-  const { result } = await run({}, { 'review:S-001': { ...REVIEW_OK, verify_exit_code: 2 }, ...HAPPY })
-  assert.equal(result.steps[0].status, 'blocked')
-  assert.equal(result.steps[0].exit_code, 2, "the reviewer's exit code is the one recorded")
-})
-
-test('a reviewer that never returned leaves the step unproven, not blocked, and triggers no retry', async () => {
-  // Observed for real: eleven agents died on a quota limit mid-run, and the
-  // workflow reported the steps as blocked — blaming the code for an outage,
-  // and spending a second implementer against the same outage. An agent that
-  // never ran found nothing because it never ran.
-  const { result, calls } = await run({}, { ...HAPPY, 'review:S-001': null })
-  const s1 = result.steps[0]
-  assert.equal(s1.status, 'unproven')
-  assert.match(s1.notes, /never returned/)
-  assert.equal(s1.attempts, 1, 'an outage must not spend a second implementer')
-  assert.ok(!calls.includes('impl:S-001:retry'))
-  assert.equal(result.status, 'unproven')
-  assert.equal(result.next, null, 'unproven must never hand off to verify')
-  assert.ok(result.unproven.some((u) => u.id === 'S-001'))
-  assert.ok(
-    result.residual_risk.some((r) => /NOT JUDGED/.test(r) && /S-001/.test(r)),
-    JSON.stringify(result.residual_risk),
-  )
-})
-
-test('an implementer or a guard that never returned is unproven too', async () => {
-  const noImpl = await run({}, { ...HAPPY, 'impl:S-001': null })
-  assert.equal(noImpl.result.steps[0].status, 'unproven')
-  assert.match(noImpl.result.steps[0].notes, /implementer never returned/)
-  assert.ok(!noImpl.calls.includes('review:S-001'), 'the reviewer ran with nothing to review')
-
-  // No guard, no clean bill: the scan is the only thing between the build and
-  // a step that landed by silencing its own proof.
-  const noGuard = await run({}, { ...HAPPY, 'guard:S-001': null })
-  assert.equal(noGuard.result.steps[0].status, 'unproven')
-  assert.match(noGuard.result.steps[0].notes, /guard never returned/)
-  assert.equal(noGuard.result.status, 'unproven')
-})
-
-test('a step nobody judged still stops the wave that depended on it', async () => {
-  const { result } = await run({ steps: FAN, waves: FAN_WAVES }, { ...HAPPY, 'review:S-001': null })
-  assert.equal(result.steps.find((s) => s.id === 'S-002').status, 'skipped')
-  assert.ok(result.skipped.some((s) => s.id === 'S-002' && s.because === 'S-001'))
-})
-
-test('unproven and blocked are different answers, and blocked wins when both happen', async () => {
-  const { result } = await run(
-    { steps: FAN, waves: FAN_WAVES },
-    {
-      ...HAPPY,
-      'review:S-002': { ...REVIEW_OK, spec_ok: false, issues: [{ file: 'src/b.ts', line: 1, issue: 'missing', kind: 'spec' }] },
-      'review:S-003': null,
-    },
-  )
-  assert.equal(result.steps.find((s) => s.id === 'S-002').status, 'blocked')
-  assert.equal(result.steps.find((s) => s.id === 'S-003').status, 'unproven')
-  assert.equal(result.status, 'blocked', 'a real rejection outranks an outage')
-})
-
-test('a forbidden repair reverts the hunk, stops the build, and nothing later is implemented', async () => {
-  const { result, calls } = await run(
-    {},
-    {
-      'guard:S-001': { verdict: 'FORBIDDEN', violations: [{ rule: 'test-skip', file: 'tests/a.test.ts', line: 4 }] },
-      ...HAPPY,
-    },
-  )
-  assert.ok(calls.includes('revert-forbidden'), 'the forbidden hunk was not reverted')
-  assert.match(result.stopped_by, /forbidden-repair: test-skip @ tests\/a\.test\.ts/)
-  assert.equal(result.status, 'blocked')
-  assert.ok(!calls.includes('impl:S-002'), 'the build went on after a forbidden repair')
-  assert.deepEqual(result.steps.map((s) => s.status), ['blocked', 'skipped', 'skipped'])
-})
-
-test('an implementer that reports blocked_by is not retried', async () => {
-  const { result, calls } = await run(
-    {},
-    { 'impl:S-001': { ...IMPL_OK, done_claimed: false, verify_exit_code: -1, blocked_by: 'needs a schema migration the plan does not have' }, ...HAPPY },
-  )
-  assert.equal(result.steps[0].status, 'blocked')
-  assert.match(result.steps[0].notes, /schema migration/)
-  assert.ok(!calls.includes('impl:S-001:retry'))
-})
-
-test('peer mode: an unavailable peer stops the build by name, and no host implementer is spawned', async () => {
-  const { result, calls } = await run(
-    { mode: 'peer', host: 'claude' },
-    { 'peer:': { status: 'peer_unavailable', reason: '`codex` is not on PATH.' }, ...HAPPY },
-  )
-  assert.equal(result.status, 'peer_unavailable')
-  assert.match(result.stopped_by, /not on PATH/)
-  assert.equal(calls.filter((c) => c.startsWith('impl:')).length, 0, 'the host implemented what the peer was asked to')
-  assert.equal(result.steps[0].status, 'peer_unavailable')
-})
-
-test('peer mode: the reviewer and the guard still run on every step, and steps go one at a time', async () => {
-  const { result, calls } = await run(
-    { mode: 'peer', host: 'claude', steps: FAN, waves: FAN_WAVES },
-    { 'peer:': { status: 'ok', files_touched: ['src/x.ts'] }, ...HAPPY },
-  )
-  assert.equal(result.status, 'built')
-  for (const id of ['S-001', 'S-002', 'S-003']) {
-    assert.ok(calls.includes(`review:${id}`), `${id} was not reviewed`)
-    assert.ok(calls.includes(`guard:${id}`), `${id} was not guarded`)
+test('an agent that never returned is unproven, buys no retry, and never hands off', async () => {
+  for (const missing of ['impl:S-001', 'review:S-001']) {
+    const { result, labels } = await run({}, { ...HAPPY, [missing]: null })
+    assert.match(result.lines[0], /^S-001 unproven .* never returned/)
+    assert.equal(labels.filter((l) => l.startsWith('impl:S-001')).length, 1)
+    assert.equal(result.status, 'unproven')
+    assert.equal(result.next, null)
   }
-  // Sequential: S-003's peer call comes after S-002's guard, not beside it.
-  assert.ok(calls.indexOf('peer:S-003') > calls.indexOf('guard:S-002'))
-  assert.ok(result.residual_risk.some((r) => /peer's own reports were not used/.test(r)))
 })
 
-test('peer mode: a rejected step is blocked at once, because the issues cannot reach the peer', async () => {
-  // peer-build.mjs builds the peer's prompt from the plan step alone, so a
-  // retry would re-send the identical prompt and buy the identical rejection
-  // at the cost of a second full peer session. The earlier version retried
-  // anyway, and the test passed only because the stubbed reviewer changed its
-  // mind on the second call regardless of what the peer was told.
-  const { result, calls } = await run(
-    { mode: 'peer', host: 'claude', steps: [CHAIN[0]], waves: [['S-001']] },
-    {
-      'peer:': { status: 'ok', files_touched: ['src/a.ts'] },
-      'review:': { ...REVIEW_OK, quality_ok: false, issues: [{ file: 'src/a.ts', line: 9, issue: 'debug output left', kind: 'quality' }] },
-      'guard:': GUARD_CLEAN,
-      summary: 'written',
-    },
-  )
+test('blocked outranks unproven when both happen', async () => {
+  const { result } = await run({ steps: FAN, waves: FAN_WAVES }, { ...HAPPY, 'review:S-002': { ...REJECT }, 'review:S-003': null })
   assert.equal(result.status, 'blocked')
-  assert.equal(result.steps[0].status, 'blocked')
-  assert.equal(result.steps[0].attempts, 1, 'a peer step must not be run twice with the same prompt')
-  assert.equal(calls.filter((c) => c === 'peer:S-001').length, 1)
-  assert.equal(calls.filter((c) => c.startsWith('impl:')).length, 0, 'the host took over work the peer was asked to do')
-  assert.match(result.steps[0].notes, /debug output left/, 'the issues must survive for whoever picks the step up')
 })
 
-test('peer mode: an agent that never returned is unproven, not a peer refusal', async () => {
-  // A dead agent says nothing about the other CLI — it may never have started
-  // it. Reporting that as peer_unavailable sends the user to check an
-  // installation that was never the problem.
-  const { result } = await run(
-    { mode: 'peer', host: 'claude', steps: [CHAIN[0]], waves: [['S-001']] },
-    { 'peer:': null, 'review:': REVIEW_OK, 'guard:': GUARD_CLEAN, summary: 'written' },
-  )
-  assert.equal(result.steps[0].status, 'unproven')
-  assert.equal(result.status, 'unproven')
-  assert.match(result.steps[0].notes, /never returned/)
-  assert.notEqual(result.status, 'peer_unavailable')
+test('a wave waits for the wave before it', async () => {
+  const { labels } = await run({ steps: FAN, waves: FAN_WAVES }, HAPPY)
+  assert.ok(labels.indexOf('impl:S-002:1') > labels.indexOf('review:S-001:1'))
+  assert.ok(labels.indexOf('impl:S-003:1') > labels.indexOf('review:S-001:1'))
 })
 
-test('the guard is invoked as a transcription of the script, on the baseline and the plan', async () => {
-  let guardPrompt = null
-  await run({}, { ...HAPPY, 'guard:': (prompt) => ((guardPrompt = prompt), GUARD_CLEAN) })
-  assert.ok(guardPrompt.includes('node /skill/scripts/forbidden-repairs.mjs --since abc123 --plan docs/plans/2026-01-01-thing.md'))
-  assert.ok(guardPrompt.includes('Do not interpret'))
+test('a forbidden repair is reverted by the small tier and stops the build', async () => {
+  const { result, calls, labels } = await run({}, { ...HAPPY, 'review:S-001': { ...REVIEW_OK, guard: 'FORBIDDEN', violations: ['test-skip tests/a.test.ts:4'] }, 'revert:': 'reverted' })
+  const revert = calls.find((c) => c.label === 'revert:S-001')
+  assert.ok(revert && revert.model === 'tier-s')
+  assert.ok(revert.prompt.includes('test-skip tests/a.test.ts:4'))
+  assert.match(result.stopped_by, /forbidden repair in S-001/)
+  assert.ok(!labels.some((l) => l.startsWith('impl:S-002')))
+  assert.equal(result.status, 'blocked')
 })
 
-test('the implementer brief carries the step verbatim, the forbidden list, and asks for relative paths', async () => {
-  let brief = null
-  await run({ steps: [CHAIN[0]], waves: [['S-001']] }, { ...HAPPY, 'impl:': (prompt) => ((brief = prompt), IMPL_OK) })
-  assert.ok(brief.includes(CHAIN[0].raw))
-  assert.ok(brief.includes('YOU MAY NOT'))
-  assert.ok(brief.includes('npm test -- S-001'))
-  // A real run came back with absolute paths in the record, which another
-  // agent then has to reconcile with the plan's relative ones.
-  assert.match(brief, /files_touched holds paths relative to \/wt, never absolute/)
+test('the reviewer reruns Verify and the guard on the baseline and the plan', async () => {
+  const { calls } = await run({ steps: [CHAIN[0]] }, HAPPY)
+  const review = calls.find((c) => c.label.startsWith('review:')).prompt
+  assert.ok(review.includes('Run: npm test -- S-001'))
+  assert.ok(review.includes('node /skill/scripts/forbidden-repairs.mjs --since abc --plan docs/plans/x.md'))
+  const impl = calls.find((c) => c.label.startsWith('impl:')).prompt
+  assert.ok(impl.includes(CHAIN[0].raw) && impl.includes('YOU MAY NOT'))
+})
+
+test('dispatch.md carries the workflow briefs verbatim', () => {
+  // Hosts without a Workflow tool paste these briefs; a brief that drifts from
+  // the workflow's is two builds wearing one name.
+  const dispatch = readFileSync(join(root, 'skills', 'build', 'references', 'dispatch.md'), 'utf8')
+  const forbidden = /const FORBIDDEN = `([^`]+)`/.exec(source)[1]
+  assert.ok(dispatch.includes(forbidden), 'the FORBIDDEN list drifted')
+  const returns = source
+    .split('\n')
+    .filter((l) => /^(- )?Return JSON:/.test(l))
+    .map((l) => l.replace(/`\s*}?\s*$/, ''))
+  assert.equal(returns.length, 2)
+  for (const line of returns) assert.ok(dispatch.includes(line), `drifted: ${line}`)
 })
 
 test('the workflow never reaches for the clock or a random number', () => {
-  // Resume replays cached agent calls; a call whose prompt embeds Date.now()
-  // never matches its cache entry, so the whole run restarts.
-  assert.ok(!source.includes('Date.now('))
-  assert.ok(!source.includes('Math.random('))
+  assert.ok(!source.includes('Date.now(') && !source.includes('Math.random('))
 })

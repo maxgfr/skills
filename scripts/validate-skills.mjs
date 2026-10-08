@@ -42,7 +42,21 @@ export function extractReferences(body) {
 // A model reads the whole SKILL.md every time the skill triggers. Past this
 // many lines the excess belongs in references/, loaded only when a phase needs
 // it — AGENTS.md says so, and a budget nobody enforces is a budget nobody keeps.
-export const SKILL_LINE_BUDGET = 150
+export const SKILL_LINE_BUDGET = 80
+
+// Model families the skills must never name. Matched only here, so the skills
+// themselves stay free of every name on the list.
+export const MODEL_NAME = /\b(?:haiku|sonnet|opus|fable|gpt-\d[\w.-]*|gemini[\w.-]*|llama[\w.-]*|mistral|qwen[\w.-]*|deepseek[\w.-]*)\b/i
+
+function walk(dir, out = []) {
+  if (!existsSync(dir)) return out
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry)
+    if (statSync(full).isDirectory()) walk(full, out)
+    else out.push(full)
+  }
+  return out
+}
 
 let problems = []
 let checked = []
@@ -267,10 +281,6 @@ ${src.replace(/^export\s+const\s+meta\s*=/m, 'const meta =')}
     for (const d of declared) if (!actual.has(d)) fail(path, `declares "${d}", which is not a skill directory.`)
     for (const d of actual) if (!declared.has(d)) fail(path, `does not declare the skill at "${d}".`)
 
-    if (plugin.hooks) {
-      const hooks = resolve(rootDir, plugin.hooks)
-      if (!existsSync(hooks)) fail(path, `points at a hooks file that does not exist: ${plugin.hooks}`)
-    }
   }
 
   const pkgPath = join(rootDir, 'package.json')
@@ -310,47 +320,14 @@ ${src.replace(/^export\s+const\s+meta\s*=/m, 'const meta =')}
     }
   }
 
-  // ------------------------------------------------------------------ hooks
+  // ------------------------------------------------------------ model names
 
-  // Every command a hooks.json names must resolve and parse. An empty hooks
-  // object is valid for plugins whose helper scripts are manually wired.
-  const hooksDir = join(rootDir, 'hooks')
-  const hooksPath = join(hooksDir, 'hooks.json')
-  if (existsSync(hooksPath)) {
-    let hooks = null
-    try {
-      hooks = JSON.parse(readFileSync(hooksPath, 'utf8'))
-    } catch (err) {
-      fail(hooksPath, `is not valid JSON: ${err.message}`)
-    }
-    if (hooks && hooks.hooks && typeof hooks.hooks === 'object') {
-      for (const [event, matchers] of Object.entries(hooks.hooks)) {
-        if (!Array.isArray(matchers)) {
-          fail(hooksPath, `"${event}" must be an array of matcher groups.`)
-          continue
-        }
-        for (const group of matchers) {
-          for (const hook of group.hooks || []) {
-            if (hook.type !== 'command' || typeof hook.command !== 'string') continue
-            for (const m of hook.command.matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"'\s]+)/g)) {
-              if (!existsSync(join(rootDir, m[1])))
-                fail(hooksPath, `"${event}" runs ${m[1]}, which does not exist.`)
-            }
-          }
-        }
-      }
-    } else if (hooks) fail(hooksPath, 'must carry a top-level "hooks" object.')
-  }
-  if (existsSync(hooksDir)) {
-    for (const entry of readdirSync(hooksDir)) {
-      if (!entry.endsWith('.mjs')) continue
-      const script = join(hooksDir, entry)
-      try {
-        execFileSync(process.execPath, ['--check', script], { stdio: 'pipe' })
-      } catch (err) {
-        fail(script, `does not parse: ${String(err.stderr || err).split('\n')[1] || err.message}`)
-      }
-    }
+  // Skills speak in tiers (small, medium, large). A model name belongs in the
+  // user's models.json; one that leaks into skills/ pins every host to it.
+  for (const file of walk(join(rootDir, 'skills'))) {
+    const text = readFileSync(file, 'utf8')
+    const m = MODEL_NAME.exec(text)
+    if (m) fail(file, `names the model "${m[0]}". Use a tier (small, medium, large); names live only in models.json.`)
   }
 
   return { problems, checked }

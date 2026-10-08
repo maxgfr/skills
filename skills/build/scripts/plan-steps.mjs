@@ -6,8 +6,11 @@
 // file will read them off a Markdown file that sometimes says something else.
 // So the parsing lives here, and the workflow receives steps, not prose.
 //
+// It also hands back the escalation ladder and the model each tier resolves to
+// on this host, so Phase 0 is one script call.
+//
 // Usage:
-//   node plan-steps.mjs [--cwd <repo>] [--plan <path>] [--pretty]
+//   node plan-steps.mjs [--cwd <repo>] [--plan <path>] [--host <host>] [--pretty]
 //
 // Output: JSON on stdout. `ok: false` carries a one-line `error` and the exit
 // code is 1 — the skill prints that line and stops.
@@ -15,9 +18,13 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
 import { join, resolve, relative, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { resolveModels } from './models.mjs'
 
 export const PLAN_DIR = 'docs/plans'
 export const STEP_ID = /S-\d{3}/g
+// The tier of each attempt at a step: the small model, the small model again
+// with the reviewer's issues, then the medium model once. Then blocked.
+export const ATTEMPTS = ['small', 'small', 'medium']
 
 // ------------------------------------------------------------ find the plan
 
@@ -112,10 +119,6 @@ function idsOf(value) {
 
 export function parsePlan(text) {
   const fm = frontmatter(text)
-  const goal = section(text, 'Goal') || ''
-  const orderText = section(text, 'Execution order') || ''
-  const executionOrder = [...new Set(orderText.match(STEP_ID) || [])]
-
   const stepsBlock = section(text, 'Steps') || ''
   const steps = []
   const headers = [...stepsBlock.matchAll(/^### (S-\d{3})\s*[—–-]\s*(.*)$/gm)]
@@ -132,17 +135,13 @@ export function parsePlan(text) {
       title: h[2].trim(),
       files: filesOf(b['files']),
       dependsOn: idsOf(b['depends on']),
-      implements: (b['implements'] || '').match(/Q-\d{3}/g) || [],
-      change: b['change'] || '',
-      preserve: b['preserve'] || '',
-      doneWhen: b['done when'] || '',
       verifyCmd: cmdMatch ? cmdMatch[1].trim() : null,
       verifyExpected: arrow >= 0 ? verify.slice(arrow + 1).trim() : '',
       raw,
     })
   })
 
-  return { status: fm.status || null, frontmatter: fm, goal, executionOrder, steps }
+  return { status: fm.status || null, steps }
 }
 
 // ----------------------------------------------------------------- schedule
@@ -193,7 +192,7 @@ export function waves(steps) {
 
 // -------------------------------------------------------------------- main
 
-export function schedule(cwd, given) {
+export function schedule(cwd, given, host = null) {
   const planPath = findPlan(cwd, given)
   if (!planPath)
     return {
@@ -223,23 +222,22 @@ export function schedule(cwd, given) {
   return {
     ok: true,
     planPath: rel,
-    status: plan.status,
-    goal: plan.goal,
-    executionOrder: plan.executionOrder,
     steps: plan.steps,
     waves: w.waves,
+    attempts: ATTEMPTS,
+    models: resolveModels(cwd, host),
   }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2)
   if (args.includes('--help')) {
-    process.stdout.write('Usage: node plan-steps.mjs [--cwd <repo>] [--plan <path>] [--pretty]\n\nExample: node plan-steps.mjs --cwd . --pretty\n')
+    process.stdout.write('Usage: node plan-steps.mjs [--cwd <repo>] [--plan <path>] [--host <host>] [--pretty]\n\nExample: node plan-steps.mjs --cwd . --host claude --pretty\n')
     process.exit(0)
   }
   for (let i = 0; i < args.length; i += 1) {
     if (args[i] === '--pretty') continue
-    if (args[i] === '--cwd' || args[i] === '--plan') {
+    if (args[i] === '--cwd' || args[i] === '--plan' || args[i] === '--host') {
       if (!args[i + 1]) {
         process.stderr.write(`${args[i]} needs a value.\n`)
         process.exit(1)
@@ -255,7 +253,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     return i >= 0 && args[i + 1] ? args[i + 1] : null
   }
   const cwd = resolve(argFor('--cwd') ?? process.cwd())
-  const result = schedule(cwd, argFor('--plan'))
+  let result
+  try {
+    result = schedule(cwd, argFor('--plan'), argFor('--host'))
+  } catch (err) {
+    result = { ok: false, error: err.message }
+  }
   process.stdout.write(JSON.stringify(result, null, args.includes('--pretty') ? 2 : 0) + '\n')
   process.exit(result.ok ? 0 : 1)
 }

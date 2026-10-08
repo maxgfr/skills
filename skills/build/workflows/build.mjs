@@ -1,474 +1,182 @@
 export const meta = {
   name: 'build',
-  description:
-    'Execute an approved plan step by step: one implementer per step in dependency waves, a reviewer and the forbidden-repairs guard on each, then hand off to verify',
+  description: 'Execute an approved plan: a small-tier implementer per step in dependency waves, a medium-tier reviewer that reruns Verify and the guard, escalation on failure',
   whenToUse: 'After a blueprint plan is approved. Invoked by the build skill; never on its own.',
   phases: [
-    { title: 'Steps', detail: 'implement each S-xxx in dependency waves, review it, run its Verify command' },
-    { title: 'Guard', detail: 'forbidden-repairs on the diff after every step — a cheat stops the build' },
-    { title: 'Handoff', detail: 'the step table, and the host-correct verify light call that proves the whole' },
+    { title: 'Steps', detail: 'implement, review, guard — per S-xxx, in dependency waves' },
   ],
 }
 
-// ---------------------------------------------------------------- inputs
-
-// Everything here was resolved by Phase 0. The workflow receives values, not
-// policy: the steps come from plan-steps.mjs, the waves too, the worktree
-// exists, the baseline is a stash SHA. Nothing below re-derives any of it.
+// Every input was resolved by Phase 0 (plan-steps.mjs). Nothing here re-reads
+// the plan or decides a model: `models` maps a tier to a name, or to null for
+// the session's own model.
 const A = args || {}
 const cwd = A.cwd || '.'
 const planPath = A.planPath || ''
 const steps = Array.isArray(A.steps) ? A.steps : []
 const waves = Array.isArray(A.waves) && A.waves.length ? A.waves : steps.map((s) => [s.id])
 const skillDir = A.skillDir || '.'
-const runDir = A.runDir || '.agents/build/run'
 const baseline = A.baseline || 'HEAD'
-const policy = A.policy || {}
-const mode = ['workflow', 'peer'].includes(policy.mode) ? policy.mode : A.mode === 'peer' ? 'peer' : 'workflow'
 const host = A.host || null
 const namespace = A.namespace || null
-const cfg = A.config || {}
-const models = cfg.models || {}
-const efforts = cfg.effort || {}
-const peerTimeoutMs = (cfg.peer && cfg.peer.timeout_ms) || 900000
-// One retry with the reviewer's issues, then blocked. A step that two attempts
-// could not land is a step the plan under-specified, and a third try is a
-// third guess.
-const maxAttempts = policy.max_attempts || (cfg.steps && cfg.steps.max_attempts) || 2
-const acceptance = policy.acceptance || {
-  implementer_exit: 0,
-  reviewer_exit: 0,
-  reviewer_spec: true,
-  reviewer_quality: true,
-  guard_verdict: 'CLEAN',
-}
+const models = A.models || {}
+// small, small with the reviewer's issues, then medium once. Then blocked.
+const attempts = Array.isArray(A.attempts) && A.attempts.length ? A.attempts : ['small', 'small', 'medium']
+const REVIEW_TIER = 'medium'
+const model = (tier) => models[tier] || undefined
 
-function skillCall(name, trailing = '') {
-  const suffix = trailing ? ` ${trailing}` : ''
-  if (host === 'codex') return `$${name}${suffix}`
-  if (host === 'claude' && namespace) return `/${namespace}:${name}${suffix}`
-  if (host === 'claude') return `/${name}${suffix}`
-  return `invoke the ${name} skill${suffix}`
-}
-
-function mdl(stage) {
-  const m = models[stage]
-  return !m || m === 'inherit' ? undefined : m
-}
-function eff(stage) {
-  return efforts[stage] || undefined
+function skillCall(name, rest) {
+  if (host === 'codex') return `$${name} ${rest}`
+  if (host === 'claude') return `/${namespace ? `${namespace}:` : ''}${name} ${rest}`
+  return `invoke the ${name} skill with ${rest}`
 }
 
 const byId = new Map(steps.map((s) => [s.id, s]))
-const state = new Map()
-for (const s of steps)
-  state.set(s.id, {
-    id: s.id,
-    title: s.title,
-    status: 'pending',
-    verify_cmd: s.verifyCmd,
-    exit_code: null,
-    attempts: 0,
-    files_touched: [],
-    notes: null,
-  })
-const skipped = []
-const unprovenSteps = []
+const state = new Map(steps.map((s) => [s.id, { id: s.id, status: 'pending', exit: null, tier: null, notes: null }]))
 let stoppedBy = null
-let peerFailure = null
 
-// An agent that never returned found nothing because it never ran. Reporting
-// that as a rejected step blames the code for an outage, retries an
-// implementer whose work may have been fine, and puts a judgement in the
-// record that nobody made. `unproven` is the third answer, and it is not a
-// pass: the build still refuses to hand off.
-function unproven(rec, why) {
-  rec.status = 'unproven'
-  rec.notes = why
-  unprovenSteps.push({ id: rec.id, why })
-}
+const CONTEXT = `Worktree (the only place you may write; run every command here; do not commit): ${cwd}
+Plan: ${planPath}`
 
-const CONTEXT = [
-  `Repo — an isolated worktree, the only place you may write: ${cwd}`,
-  `Plan — the promise this build is held to: ${planPath}`,
-  `Run every command from ${cwd}. Do not commit.`,
-].join('\n')
+const FORBIDDEN = `YOU MAY NOT: skip, delete, weaken or .only a test; change an expected value to match the output; add @ts-ignore, @ts-expect-error, eslint-disable, # type: ignore or # noqa; widen a type to any; swallow an error in an empty catch; edit a gate command, CI workflow, Makefile target or the plan; commit. If the step needs one of those, stop and set blocked_by.`
 
-const FORBIDDEN = `YOU MAY NOT: skip, delete, weaken or .only a test; change an expected value to match what the code produces; add @ts-ignore, @ts-expect-error, eslint-disable, # type: ignore or # noqa; widen a type to any or "unknown as"; swallow an error in an empty catch; edit a gate command, a CI workflow, a Makefile target, or the plan file; commit; renumber or rename a step.
-
-If the step cannot be completed without one of those, STOP and return done_claimed: false with blocked_by describing what would be required. That answer is correct and useful — a step landed by silencing its own proof is not landed.`
-
-// --------------------------------------------------------------- schemas
-
-const STEP_SCHEMA = {
+const IMPL_SCHEMA = {
   type: 'object',
-  required: ['done_claimed', 'files_touched', 'verify_cmd', 'verify_exit_code', 'verify_output'],
+  required: ['done', 'files', 'exit', 'out'],
   properties: {
-    done_claimed: { type: 'boolean' },
-    files_touched: { type: 'array', items: { type: 'string' } },
-    verify_cmd: { type: 'string' },
-    verify_exit_code: { type: 'number' },
-    verify_output: { type: 'string' },
-    notes: { type: 'string' },
+    done: { type: 'boolean' },
+    files: { type: 'array', items: { type: 'string' } },
+    exit: { type: 'number' },
+    out: { type: 'string' },
     blocked_by: { type: 'string' },
   },
 }
 
 const REVIEW_SCHEMA = {
   type: 'object',
-  required: ['spec_ok', 'quality_ok', 'verify_exit_code', 'verify_output', 'issues'],
+  required: ['ok', 'exit', 'guard', 'issues'],
   properties: {
-    spec_ok: { type: 'boolean' },
-    quality_ok: { type: 'boolean' },
-    verify_exit_code: { type: 'number' },
-    verify_output: { type: 'string' },
-    issues: {
-      type: 'array',
-      items: {
-        type: 'object',
-        required: ['file', 'line', 'issue', 'kind'],
-        properties: {
-          file: { type: 'string' },
-          line: { type: 'number' },
-          issue: { type: 'string' },
-          kind: { type: 'string', enum: ['spec', 'quality', 'scope'] },
-        },
-      },
-    },
-    summary: { type: 'string' },
+    ok: { type: 'boolean' },
+    exit: { type: 'number' },
+    guard: { type: 'string', enum: ['CLEAN', 'FORBIDDEN'] },
+    violations: { type: 'array', items: { type: 'string' } },
+    issues: { type: 'array', maxItems: 5, items: { type: 'string' } },
   },
 }
-
-const GUARD_SCHEMA = {
-  type: 'object',
-  required: ['verdict', 'violations'],
-  properties: {
-    verdict: { type: 'string', enum: ['CLEAN', 'FORBIDDEN'] },
-    violations: {
-      type: 'array',
-      items: {
-        type: 'object',
-        required: ['rule', 'file', 'line'],
-        properties: {
-          rule: { type: 'string' },
-          file: { type: 'string' },
-          line: { type: 'number' },
-          text: { type: 'string' },
-        },
-      },
-    },
-  },
-}
-
-const PEER_STEP_SCHEMA = {
-  type: 'object',
-  required: ['status'],
-  properties: {
-    status: { type: 'string', enum: ['ok', 'peer_unavailable', 'peer_output_invalid'] },
-    reason: { type: 'string' },
-    files_touched: { type: 'array', items: { type: 'string' } },
-    duration_ms: { type: 'number' },
-    last_message: { type: 'string' },
-  },
-}
-
-// ---------------------------------------------------------------- briefs
 
 function implBrief(step, feedback) {
   return `${CONTEXT}
 
-Implement exactly this step of the plan, and nothing else. The plan is the promise; this step is your whole scope.
+Implement exactly this step and nothing else:
 
 ${step.raw}
 
-Rules:
-- Touch only the files the step names under Files:. A file it does not name belongs to another step.
-- Never guess a path or a symbol — open the file. The plan cites what it depends on; if a cited fact is wrong, say so in notes and stop rather than improvising.
-- When the change is in, run the Verify command exactly as written, from ${cwd}:
-    ${step.verifyCmd}
-  Expected: ${step.verifyExpected || 'see the step'}
-- Report its exit code and the first 15 lines of its output verbatim. A command you did not run to completion has no exit code: report -1 and say why in notes.
-- files_touched holds paths relative to ${cwd}, never absolute ones — they go into a record another agent reads against the plan.
-- done_claimed is true only if the Verify command exited 0 AND every bullet under Change is in place.
+- Touch only the files under Files:. Open a file before editing it; never guess a path or a symbol.
+- Then run, from the worktree: ${step.verifyCmd}  (expected: ${step.verifyExpected || 'see the step'})
+- Return JSON: done (Verify exited 0 and every Change bullet is in), files (relative paths), exit (-1 if it did not finish), out (at most 10 lines of its output).
 
-${FORBIDDEN}${
-    feedback
-      ? `
-
-A reviewer rejected the previous attempt. Address every item below; do not argue with it in prose, change the code:
-${feedback}`
-      : ''
-  }`
+${FORBIDDEN}${feedback ? `\n\nThe previous attempt was rejected. Fix every item:\n${feedback}` : ''}`
 }
 
 function reviewBrief(step) {
-  const files = step.files && step.files.length ? step.files.map((f) => `"${f}"`).join(' ') : '.'
+  const files = step.files && step.files.length ? step.files.join(' ') : '.'
   return `${CONTEXT}
 
-Review the change just made for this step. You may read anything and run commands; you may not edit a file.
+Review the change for this step. Read and run anything; edit nothing.
 
 ${step.raw}
 
-1. Spec — read the diff (\`git diff ${baseline} -- ${files}\` plus any untracked file under those paths; untracked files appear in no diff, so list them with \`git status --porcelain\`). For every bullet under Change: is it present? Is everything under Preserve untouched? Was any file outside Files: modified for this step?
-2. Quality — does the change follow the surrounding code's conventions, handle the failure cases the step implies, and leave no debug output, TODO, or dead code behind?
-3. Proof — run the Verify command yourself, exactly as written, from ${cwd}:
-    ${step.verifyCmd}
-   Report its exit code and the first 15 lines of its output. The implementer's own report is a claim; your run is the evidence.
-
-spec_ok is true only when every Change bullet is present and Preserve holds. quality_ok is true only when nothing under 2 needs fixing. Every issue carries file:line and a kind (spec | quality | scope). Fix nothing.`
+1. Read \`git diff ${baseline} -- ${files}\` and any untracked file there (\`git status --porcelain\`). Every Change bullet present, Preserve untouched, no file outside Files:, no debug output or dead code.
+2. Run: ${step.verifyCmd}
+3. Run: node ${skillDir}/scripts/forbidden-repairs.mjs --since ${baseline}${planPath ? ` --plan ${planPath}` : ''}
+Return JSON: ok (1 holds), exit (of 2), guard (the "verdict" of 3), violations (3's violations as "rule file:line"), issues (at most 5, each "file:line — problem").`
 }
 
-function guardBrief() {
-  return `Run exactly this from ${cwd} and return its JSON output:
-
-node ${skillDir}/scripts/forbidden-repairs.mjs --since ${baseline}${planPath ? ` --plan ${planPath}` : ''} --pretty
-
-Set verdict from the output's "verdict" field and copy its violations. Do not edit any file. Do not interpret — transcribe.`
-}
-
-function revertBrief(guard) {
-  return `${CONTEXT}
-
-The last step introduced forbidden repairs. Revert exactly these hunks and nothing else, leaving the legitimate parts of the step in place:
-
-${JSON.stringify(guard.violations, null, 2)}
-
-Use \`git checkout -p\` or restore the file and re-apply the clean hunks. Report what you reverted.`
-}
-
-function peerBrief(step) {
-  return `Run exactly this from ${cwd} and return its JSON output verbatim:
-
-node ${skillDir}/scripts/peer-build.mjs --host ${host} --cwd ${cwd} --plan ${planPath} --step ${step.id} --out ${runDir}/peer/${step.id} --timeout-ms ${peerTimeoutMs}
-
-Do not edit any file yourself. Do not interpret — transcribe. If the command itself cannot be started, return status "peer_unavailable" with the error as reason.`
-}
-
-// ------------------------------------------------------------- one step
-
+// An agent that never returned judged nothing: the step is `unproven`, it buys
+// no retry, and it is not a pass.
 async function runStep(id) {
   const step = byId.get(id)
   const rec = state.get(id)
   let feedback = null
-
-  while (rec.attempts < maxAttempts && !stoppedBy) {
-    rec.attempts++
-    let implExit = null
-
-    if (mode === 'peer') {
-      // The peer writes; it does not get to say whether it succeeded. The
-      // reviewer runs the Verify command and the guard scans the diff, exactly
-      // as for a host implementer — a second vendor's claim is still a claim.
-      const p = await agent(peerBrief(step), {
-        schema: PEER_STEP_SCHEMA,
-        effort: 'low',
-        label: `peer:${id}`,
-        phase: 'Steps',
-      })
-      // An agent that died is not a peer that refused. One says nothing about
-      // the other CLI at all — it may never have been started.
-      if (!p)
-        return unproven(rec, 'the agent running the peer never returned, so nothing is known about this step — the peer itself may never have been started.')
-      if (p.status !== 'ok') {
-        peerFailure = p.reason || `the peer returned ${p.status}`
-        rec.status = 'peer_unavailable'
-        rec.notes = peerFailure
-        stoppedBy = `peer-unavailable: ${peerFailure}`
-        return
-      }
-      rec.files_touched = p.files_touched || []
-    } else {
-      const impl = await agent(implBrief(step, feedback), {
-        schema: STEP_SCHEMA,
-        model: mdl('implementer'),
-        effort: eff('implementer'),
-        label: rec.attempts > 1 ? `impl:${id}:retry` : `impl:${id}`,
-        phase: 'Steps',
-      })
-      if (!impl)
-        return unproven(rec, 'the implementer never returned, so nothing about this step was recorded. It may have written files before it died — check the worktree.')
-      if (impl.blocked_by) {
-        rec.status = 'blocked'
-        rec.notes = `implementer: ${impl.blocked_by}`
-        return
-      }
-      implExit = typeof impl.verify_exit_code === 'number' ? impl.verify_exit_code : null
-      rec.files_touched = impl.files_touched || []
-    }
-
-    const rev = await agent(reviewBrief(step), {
-      schema: REVIEW_SCHEMA,
-      model: mdl('reviewer'),
-      effort: eff('reviewer'),
-      label: `review:${id}`,
+  for (let i = 0; i < attempts.length && !stoppedBy; i++) {
+    const tier = attempts[i]
+    rec.tier = tier
+    const impl = await agent(implBrief(step, feedback), {
+      schema: IMPL_SCHEMA,
+      model: model(tier),
+      label: `impl:${id}:${i + 1}`,
       phase: 'Steps',
     })
-    // Not a rejection — an absence. Retrying the implementer here spends a
-    // second one against the same outage and calls the result a code problem.
-    if (!rev)
-      return unproven(rec, 'the reviewer never returned, so the step was never judged. The implementer may well have got it right; nobody checked.')
-
-    // The guard runs regardless of what anyone claimed — after every step, on
-    // the whole diff since the baseline. One forbidden hunk anywhere stops the
-    // build: a step landed by silencing a checker poisons every step after it.
-    const guard = await agent(guardBrief(), {
-      schema: GUARD_SCHEMA,
-      model: mdl('guard'),
-      effort: 'low',
-      label: `guard:${id}`,
-      phase: 'Guard',
+    if (!impl) return Object.assign(rec, { status: 'unproven', notes: 'implementer never returned' })
+    if (impl.blocked_by) {
+      rec.notes = `blocked_by: ${impl.blocked_by}`
+      // A small model that says it cannot is worth one look from the medium
+      // one; a medium model that says it cannot means the plan is short.
+      const last = attempts.length - 1
+      if (i >= last || attempts[last] === tier) return Object.assign(rec, { status: 'blocked' })
+      feedback = `- the previous implementer stopped: ${impl.blocked_by}`
+      i = last - 1
+      continue
+    }
+    const rev = await agent(reviewBrief(step), {
+      schema: REVIEW_SCHEMA,
+      model: model(REVIEW_TIER),
+      label: `review:${id}:${i + 1}`,
+      phase: 'Steps',
     })
-    // No guard, no clean bill. A step whose diff was never scanned cannot be
-    // called done: that scan is the only thing standing between the build and
-    // a step that landed by silencing its own proof.
-    if (!guard)
-      return unproven(rec, 'the guard never returned, so the diff was never scanned for silencing repairs.')
-    if (guard.verdict !== acceptance.guard_verdict) {
-      await agent(revertBrief(guard), { model: mdl('implementer'), label: 'revert-forbidden', phase: 'Guard' })
-      stoppedBy = `forbidden-repair: ${guard.violations.map((v) => `${v.rule} @ ${v.file}`).join(', ')}`
-      rec.status = 'blocked'
-      rec.notes = stoppedBy
-      return
+    if (!rev) return Object.assign(rec, { status: 'unproven', notes: 'reviewer never returned' })
+    // One forbidden hunk anywhere stops the build: a step landed by silencing
+    // a checker poisons every step after it.
+    if (rev.guard !== 'CLEAN') {
+      const v = (rev.violations || []).join(', ') || 'unspecified'
+      await agent(`${CONTEXT}\n\nRevert exactly these forbidden hunks and nothing else: ${v}. Use \`git checkout -p\` or restore and re-apply the clean hunks. Return the reverted files.`, {
+        model: model('small'),
+        label: `revert:${id}`,
+        phase: 'Steps',
+      })
+      stoppedBy = `forbidden repair in ${id}: ${v}`
+      return Object.assign(rec, { status: 'blocked', notes: stoppedBy })
     }
-
-    // Done needs all three: the implementer's run passed (host mode), the
-    // reviewer's own run passed, and the reviewer accepted the spec and the
-    // quality. A reviewer that answered without an exit code proved nothing.
-    const reviewExit = typeof rev.verify_exit_code === 'number' ? rev.verify_exit_code : null
-    rec.exit_code = reviewExit !== null ? reviewExit : implExit
-    const proven = (mode === 'peer' || implExit === acceptance.implementer_exit) && reviewExit === acceptance.reviewer_exit
-    const accepted = rev.spec_ok === acceptance.reviewer_spec && rev.quality_ok === acceptance.reviewer_quality
-    if (proven && accepted) {
-      rec.status = 'done'
-      rec.notes = null
-      return
-    }
-
-    const issues = (rev.issues || []).map((i) => `- ${i.file}:${i.line} [${i.kind}] ${i.issue}`)
-    if (implExit !== null && implExit !== 0) issues.unshift(`- the Verify command exited ${implExit} for the implementer`)
-    if (reviewExit !== 0) issues.unshift(`- the Verify command exited ${reviewExit === null ? 'without a result' : reviewExit} for the reviewer`)
-    feedback = issues.join('\n') || '- the reviewer did not accept the step and gave no detail'
-    rec.notes = feedback
-
-    // Peer mode has no channel back to the peer: peer-build.mjs builds its
-    // prompt from the plan step alone, so the reviewer's issues cannot reach
-    // it. A second run would be the same prompt, the same output and the same
-    // rejection, at the cost of another full peer session — so a rejected peer
-    // step is blocked at once, with the issues in the record for whoever picks
-    // it up.
-    if (mode === 'peer') {
-      rec.status = 'blocked'
-      return
-    }
-
-    log(`${id} attempt ${rec.attempts}/${maxAttempts} not accepted: ${issues.length} issue(s)`)
+    rec.exit = rev.exit
+    if (impl.exit === 0 && rev.exit === 0 && rev.ok) return Object.assign(rec, { status: 'done', notes: null })
+    const issues = (rev.issues || []).slice(0, 5).map((s) => `- ${s}`)
+    if (rev.exit !== 0) issues.unshift(`- Verify exited ${rev.exit} for the reviewer`)
+    feedback = issues.join('\n') || '- rejected without detail'
+    rec.notes = feedback.replace(/\n/g, ' ')
+    log(`${id} attempt ${i + 1}/${attempts.length} (${tier}) rejected`)
   }
-
   if (rec.status === 'pending') rec.status = 'blocked'
 }
 
-// ------------------------------------------------------------- the waves
-
-// Deterministic, and no agent before the first implementer: the plan was
-// approved, the steps were parsed, the schedule was computed. A question here
-// would be a question the plan already answered.
 phase('Steps')
-
 for (const wave of waves) {
   if (stoppedBy) break
   const runnable = []
   for (const id of wave) {
     const step = byId.get(id)
     if (!step) continue
-    const rec = state.get(id)
     const unmet = (step.dependsOn || []).find((d) => !state.get(d) || state.get(d).status !== 'done')
-    if (unmet) {
-      rec.status = 'skipped'
-      rec.notes = `depends on ${unmet}, which is ${state.get(unmet) ? state.get(unmet).status : 'unknown'}`
-      skipped.push({ id, because: unmet })
-      continue
-    }
-    runnable.push(id)
+    if (unmet) Object.assign(state.get(id), { status: 'skipped', notes: `needs ${unmet}` })
+    else runnable.push(id)
   }
-  if (mode === 'peer') {
-    // One worktree, one peer process at a time.
-    for (const id of runnable) if (!stoppedBy) await runStep(id)
-  } else {
-    await parallel(runnable.map((id) => () => runStep(id)))
-  }
+  await parallel(runnable.map((id) => () => runStep(id)))
 }
-
-// Whatever never ran because the build stopped is skipped by name, not left
-// "pending" as if it might still happen.
-for (const rec of state.values()) {
-  if (rec.status === 'pending') {
-    rec.status = 'skipped'
-    rec.notes = stoppedBy ? `build stopped: ${stoppedBy}` : 'never scheduled'
-    skipped.push({ id: rec.id, because: stoppedBy || 'never scheduled' })
-  }
-}
-
-// --------------------------------------------------------------- handoff
-
-phase('Handoff')
+for (const rec of state.values())
+  if (rec.status === 'pending') Object.assign(rec, { status: 'skipped', notes: stoppedBy ? 'build stopped' : 'never scheduled' })
 
 const table = [...state.values()]
-// Four outcomes, not two. `unproven` is what an outage produces: nothing is
-// known to be wrong, and nothing was checked. Reporting it as `blocked` blames
-// the code; reporting it as `built` would be a lie. Neither hands off.
-const status = peerFailure
-  ? 'peer_unavailable'
-  : stoppedBy || table.some((r) => r.status === 'blocked')
-    ? 'blocked'
-    : table.some((r) => r.status === 'unproven')
-      ? 'unproven'
-      : table.every((r) => r.status === 'done')
-        ? 'built'
-        : 'blocked'
-
-const residualRisk = [
-  `build proves each step by its own Verify command; the whole is proven by ${skillCall('verify', 'light')}, which has not run yet.`,
-]
-if (mode === 'peer') residualRisk.push("the peer's own reports were not used as evidence — every step was re-run by the reviewer.")
-if (stoppedBy) residualRisk.push(`the build stopped: ${stoppedBy}`)
-if (unprovenSteps.length)
-  residualRisk.push(
-    `NOT JUDGED — ${unprovenSteps.map((u) => `${u.id}: ${u.why}`).join(' · ')} An agent that never returned is not a verdict on the code; re-run the build for these steps before reading anything into them.`,
-  )
-
-const summary = {
-  status,
-  mode,
-  plan: planPath,
-  worktree: cwd,
-  baseline,
-  steps: table,
-  skipped,
-  unproven: unprovenSteps,
-  stopped_by: stoppedBy,
-  residual_risk: residualRisk,
-}
-
-await agent(
-  `Write ${runDir}/BUILD.md — the build record, in Markdown, and nothing else. Create the directory if needed.
-
-- A status line: ${status}, plan ${planPath}, worktree ${cwd}, mode ${mode}.
-- STEPS: one row per step — id, title, status, attempts, Verify command, exit code, files touched.
-- SKIPPED: each skipped step and the dependency that blocked it.
-- NOT JUDGED: each step whose status is "unproven", with the reason verbatim. Say plainly that an agent did not return and the step was therefore never judged — do not describe these as failing.
-- STOPPED BY, if set.
-- RESIDUAL RISK: the list in the data.
-- NEXT: ${status === 'built' ? `run ${skillCall('verify', `light ${planPath}`)}` : status === 'unproven' ? `run ${skillCall('build')} again on the same plan — the steps above were never judged` : `the blocked steps above, then ${skillCall('build')} again on the same plan`}.
-
-Report back only the path.
-
-DATA:
-${JSON.stringify(summary)}`,
-  { model: mdl('reporter'), effort: 'low', label: 'summary', phase: 'Handoff' },
-)
+const status = stoppedBy || table.some((r) => r.status === 'blocked')
+  ? 'blocked'
+  : table.some((r) => r.status === 'unproven')
+    ? 'unproven'
+    : table.every((r) => r.status === 'done')
+      ? 'built'
+      : 'blocked'
 
 return {
-  ...summary,
-  run_dir: runDir,
-  next: status === 'built' ? skillCall('verify', `light ${planPath}`) : null,
+  status,
+  worktree: cwd,
+  lines: table.map((r) => [r.id, r.status, r.exit ?? '-', r.tier ?? '-', r.notes || ''].join(' ').trim()),
+  stopped_by: stoppedBy,
+  next: status === 'built' ? skillCall('verify', planPath) : null,
 }

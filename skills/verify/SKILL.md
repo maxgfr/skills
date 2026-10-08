@@ -9,100 +9,50 @@ metadata:
 
 # verify
 
-Turn "it looks done" into a verdict backed by executed evidence. All paths below
-are relative to this skill's directory.
+Run the repository's gates, then have one `large`-tier auditor read the change.
+The output is a verdict and its evidence. Paths are relative to this skill's directory.
 
-## Three laws
+## Laws
 
-1. **No verdict without an executed command.** Cite the command, exit code, and a line of output. A gate that could not run is *not run*, never passing.
-2. **No finding without a refutation attempt.** Every model-authored candidate faces an independent skeptic. Survivors are reported; the rest are counted.
-3. **No repair that only silences the checker.** The richer tiers refuse skipped or weakened tests, suppressions, widened types, swallowed errors, edited CI, and rewritten plans. `scripts/forbidden-repairs.mjs` enforces this.
+1. **No verdict without an executed command.** A gate that could not run is a failure to prove, never a pass.
+2. **No finding without `file:line` and a concrete failure scenario.** No style, no speculation.
+3. **verify repairs nothing.** It reports. Fixing is the user's call, or `build`'s.
 
-## Modes and tiers
+## Invocations
 
-Syntax: Codex uses `$verify`; the Claude plugin uses `/maxgfr:verify`; a
-standalone Claude skill uses `/verify`.
+`$verify` (Codex), `/maxgfr:verify` (Claude plugin), `/verify` (standalone). Arguments:
+none, `<plan>` (an existing `.md` path: the promise to hold the change to), `<ref>` (a fixed point: `main`, a SHA, `HEAD~3`).
 
-| Invocation | Agents | What it does |
-|---|---|---|
-| no arguments / `ultralight` | at most 1 | **Default.** Run every detected gate once; no analysis or repair. |
-| `light` | ~7 + 1/candidate | Gates, plan conformance, 3-lens defect hunt, one skeptic per claim, repair loop. |
-| `normal` | ~9 + 1–3/candidate | `light` plus behaviour proof and panels on blockers. |
-| `deep` | ~13 + 1–3/candidate | Every lens, red-green audit, panels throughout. |
-| `report` | — | Read-only, any tier. Follow with "fix" to apply blockers once. |
-| `crosscheck` | +1 + 1/candidate | Add a second opinion from the other CLI agent. |
-| `<ref>` | — | Explicit fixed point (`main`, a SHA, `HEAD~3`). |
+## Steps
 
-The default answers only whether the repository's commands pass now. It does
-not read the diff, check a plan, hunt defects, prove behaviour, or repair a
-failure. Use `verify light` when the change itself needs analysis and repair.
-Presets and full configuration: `references/config.md`.
+1. **Diff.** With `<ref>`: `git diff <ref>`. With a dirty tree: `git diff HEAD`. With a clean tree: `git diff $(git merge-base HEAD origin/HEAD)`, or `main` when `origin/HEAD` is unset. Always add the untracked files from `git status --porcelain`. A ref that does not resolve: say so and stop.
+2. **Gates.** `node scripts/detect-gates.mjs --cwd <repo> --run`. It runs every detected gate once and prints compact JSON (`ok`, and for each gate `cmd`, `exit`, and `out` on failure). Do not rerun the gates yourself.
+3. **Audit.** `node scripts/models.mjs --cwd <repo> --host <host>`, where `host` is the CLI you run in. Pass it, never guess it. Dispatch one subagent with model `large` (`null` means inherit) and the brief in `references/audit.md`. With no subagent tool, do the audit yourself and mark the output `inline`. With an empty diff, skip the audit.
 
-## Phase 0 — Resolve, then route
+## Verdict
 
-Do this in the main context before spending an agent.
-
-1. **Config first.** Run `node scripts/resolve-config.mjs --cwd <repo> --host <host> -- <arguments>`. Pass its `tier`, `mode`, `ref`, and `config` unchanged. A tier-like branch needs `--ref light`; `crosscheck` is a modifier.
-2. **Gates.** Run `node scripts/detect-gates.mjs --cwd <repo> --pretty`.
-3. **Run directory.** Create `<report.dir>/<YYYYMMDD-HHMMSS>/` and prune oldest runs beyond `keep_runs`.
-
-The **short route** applies when the resolved config has only gates enabled and
-the loop disabled: `spec: false`, `defects: false`, `behavior: "off"`,
-`peer: false`, `loop.enabled: false`.
-
-- Run the gates lane once, at low effort. With no detected gate, spend no agent and return `UNPROVEN`; never escalate tiers.
-- Skip delta, promise, ref, baseline, matrix, judging, reporter, and fix-loop work. A blocking gate that fails, times out, or cannot run returns `FAIL` after that pass. Report a non-blocking gate failure without sinking the verdict.
-- Write the compact report from the returned structured gate evidence in the main context. This keeps the report path real without spending a reporter agent.
-
-Any explicit richer tier, enabled analysis lane, peer crosscheck, or enabled
-loop takes the full route below.
-
-## Full-route pinning
-
-1. **Delta.** User ref wins. Otherwise: no commits → whole working tree; dirty tree → `git diff HEAD`, cached diff, and commits since merge-base; clean tree → diff from `git merge-base --fork-point origin/<default> HEAD`; non-git → target directory. Always include `??` paths from `git status --porcelain` as whole-file additions; never mutate the index with `git add -N`.
-2. **Promise.** User path → active host plan artifact → `docs/plans/`, `docs/superpowers/plans/`, `specs/`, `.scratch/` → referenced issue → inferred intent, named as such. An approved `docs/plans/` file is announced before agent work.
-3. **Baseline, only when repair is enabled.** `git stash create`; empty output means use `HEAD`. It touches no ref or file.
-4. **Host, only for peer crosscheck.** Pass the executing host, `claude` or `codex`; do not infer it from installed commands.
-
-Stop if an explicit ref does not resolve or the full-route diff is empty.
-
-## Full pipeline
-
-Read `references/lanes.md` for lane briefs.
-
-| Phase | What | Detail |
-|---|---|---|
-| 1 · Matrix | Aim analysis at the plan and diff | `references/matrix.md` |
-| 2 · Lanes | Gates, conformance, defects, behaviour, optional peer | per resolved config |
-| 3 · Judging | Refute candidate findings | `references/judging.md` |
-| 4 · Verdict | Compact response and durable report | `references/report.md` |
-| 5 · Loop | Repair, guard, and recheck | `references/fix-loop.md` |
-
-Lane E is opt-in through `crosscheck`; its findings face the same skeptics. Read
-`references/crosscheck.md` for its brief and schema. An unavailable requested
-peer is named in `RESIDUAL RISK`.
-
-Every stage inherits the session model unless config pins it. Prefer the highest
-host capability available:
-
-1. **Workflow.** Call `Workflow` with `workflows/verify.mjs` and resolved Phase 0 data.
-2. **Parallel subagents.** Follow `references/fallbacks.md` and its deterministic schedule.
-3. **Inline.** Run the same enabled phases sequentially and report `execution: inline`.
-
-## Output contract
-
-Return only: verdict and tier; for every tier below `deep`, a second line naming
-what was not checked; EVIDENCE rows with command, exit code, and first failing
-line; surviving findings with failure scenarios; REQUIREMENTS counts when the
-spec lane ran; RESIDUAL RISK; and a real report path. Examples and red flags:
-`references/report.md`.
-
-| Verdict | Meaning |
+| Verdict | When |
 |---|---|
-| `PASS` | Every blocking gate passed, no blocking finding survived, and a gate or behaviour proof completed. Non-blocking failures remain visible evidence. |
-| `FAIL` | A blocking gate failed, timed out, or could not run; a blocking finding survived; or an enabled loop stopped. |
-| `UNPROVEN` | No gate completed and no behaviour was proven. This is not a pass. |
+| `FAIL` | A blocking gate failed (`ok: false`), or the audit returned a finding. |
+| `UNPROVEN` | No gate ran (`ok: null`), or the auditor never returned. Not a pass. |
+| `PASS` | Every blocking gate passed and the audit found nothing. |
 
-Anything unverified or errored is named in `RESIDUAL RISK`. Findings killed by
-skeptics are a count, not a list. When `report_path` is `null`, write the short
-report yourself in the run directory before printing its path.
+## Output
+
+Exactly this, no prose, no report file:
+
+```
+FAIL
+gate npm run lint 1 src/a.ts:3 'x' is unused
+gate npm test 0
+finding src/a.ts:12 — <issue> · <failure scenario>
+```
+
+One `gate` line per gate, with the first line of `out` when it failed. One `finding` line per finding.
+Add a line for anything not checked (no plan, audit skipped, model inherited because the tool takes none).
+
+## Does not
+
+- Repair, revert, commit, or rewrite a test or a gate.
+- Run panels, skeptics, or a second auditor. One audit, on the `large` tier.
+- Report a finding outside the diff, or one without a scenario.

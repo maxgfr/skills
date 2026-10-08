@@ -1,143 +1,63 @@
-# The artifact
+# The plan file
 
-The plan is the promise. Everything that matters has to survive in this file,
-because the agent that implements it will not have been in the conversation —
-that is the point, and it is what makes clearing the context safe.
-
-**Path:** `docs/plans/<YYYY-MM-DD>-<slug>.md`. `verify light` searches
-`docs/plans/`, so a plan written here is found with no configuration. Revisions
-overwrite the same file; there is no `-v2-final`.
-
-Write it for an engineer who is a strong developer, knows this codebase not at
-all, and will read one step without reading its neighbours.
+`docs/plans/<YYYY-MM-DD>-<slug>.md`. A revision overwrites the same file.
 
 ## Skeleton
 
 ```markdown
 ---
-status: awaiting-approval | approved
-crosscheck: not-requested | paired | unavailable
-fixed_point: <commit SHA + dirty-tree note, or "greenfield">
+status: awaiting-approval
+fixed_point: <commit SHA, plus "dirty" if the tree was>
 ---
 
-# <Subject> — implementation plan
+# <Subject>
 
 ## Goal
 
-<One observable outcome. Not "improve X" — what is true afterwards that is not true now.>
+<One observable outcome: what is true afterwards that is not true now.>
 
 ## Locked constraints
 
-| Source | Constraint | Consequence for the plan |
-|---|---|---|
-| Q-001 | <the user's answer, or the recommendation they delegated> | <what the plan must therefore do> |
-
-## Non-goals
-
-- <What this deliberately does not do, so a reviewer stops asking for it.>
+- Q-001 — <the answer> → <what the plan must therefore do>
 
 ## Grounded facts
 
-- `path/file.ts:42` — <the fact this plan depends on>
-- <A file that does not exist yet is named as new, never cited.>
+- `path/file.ts:42` — <the fact a step relies on>
 
-## Chosen approach
+## Non-goals
 
-<The approach, and the reason it beats the alternatives.>
-
-## Rejected approaches
-
-<Non-normative. Never executed; kept so the next reader does not re-propose them.>
-
-- <Alternative> — <the concrete reason it lost>
-
-## Execution order
-
-`S-001 → S-002 → S-004 → S-003`
+- <What this deliberately does not do.>
 
 ## Steps
 
 ### S-001 — <imperative title>
 
-- **Files:** Create `exact/path.ts` · Modify `exact/other.ts:120-145` · Test `tests/path.test.ts`
-- **Interfaces:**
-  - Consumes: <exact signatures this needs from earlier steps>
-  - Produces: <exact names and types later steps rely on>
-- **Implements:** `Q-001`, `Q-004`
+- **Files:** Create `exact/new.ts` · Modify `exact/old.ts:120-145` · Test `tests/old.test.ts`
 - **Depends on:** none
-- **Change:** <the specific work, concrete enough to act on>
-- **Preserve:** <the behaviour or interface that must not move>
-- **Done when:** <a binary criterion — true or false, not "works well">
-- **Verify:** `<exact command>` → <the exact expected result>
-
-## Verification matrix
-
-| Constraint | Step | Proof | Expected |
-|---|---|---|---|
-| Q-004 | S-001 | `<command>` | <observable result> |
-
-## Risks and fallbacks
-
-| Risk | Trigger | Response | Owning step |
-|---|---|---|---|
-
-## Unresolved decisions
-
-None.
-
-## Approval
-
-- Status: <awaiting-approval | approved>
-- Approved after crosscheck: <yes | no | not requested>
+- **Interfaces:** Produces `take(key: string): boolean`   (only when another step uses it)
+- **Change:** <exactly what to write, naming every symbol>
+- **Preserve:** <the behavior or signature that must not move>
+- **Verify:** `<exact command>` → <exact expected result>
 ```
 
-## Step IDs
+`build` reads `status`, the `S-xxx` headers, `Files`, `Depends on` and the `Verify` command.
+The order comes from `Depends on`. Steps that share no file and no dependency run in parallel.
 
-`S-xxx` is immutable. An inserted step takes the next unused number and the
-execution order changes — renumbering breaks every `Depends on`, every citation
-in the crosscheck appendix, and every reference in a review that is already
-written.
+## Writing steps for a small implementer
 
-## Sizing a step
+The implementer is a small model that reads one step and nothing else.
 
-A step is the smallest unit worth a fresh reviewer's gate. Fold setup, config
-and scaffolding into the step whose deliverable needs them; split only where a
-reviewer could reject one step while approving its neighbour.
+- **Exact paths and symbols.** `src/limit/bucket.ts`, `export function take(key: string): boolean`. Never "the limiter module".
+- **No open choice.** Pick the name, the type, the error message, the library. "Add appropriate handling" is a choice left open.
+- **One step = one diff a reviewer reads at a glance.** Fold setup into the step that needs it. Split only where a reviewer could reject one half and accept the other.
+- **Self-contained.** Never "same as S-003": repeat it. A symbol a step consumes is produced by an earlier step it depends on.
+- **Verify is a command with a binary result.** For a bug fix, the command runs a test that fails before the change: name its file, its input and the expected output.
 
-## What makes a plan unbuildable
+## Before showing it
 
-Scan for these before presenting it. Each one has cost someone a wasted
-implementation round:
+- Every `Q-xxx` maps to a step or a non-goal.
+- No "TBD", "TODO", "handle edge cases", "write tests", "similar to".
+- A name is spelled the same in every step.
+- Read it as someone who never saw this conversation. Anything only the chat knows goes in the file.
 
-- "TBD", "TODO", "implement later", "fill in details"
-- "Add appropriate error handling", "add validation", "handle edge cases"
-- "Write tests for the above", with no test named and no behaviour stated
-- "Similar to S-003" — repeat it; steps are read out of order
-- A type, function or file referenced by one step and defined by none
-- A "Verify" line that is not a command, or whose expected result is "it works"
-
-## Regression evidence
-
-For a behavior fix, name the regression input, expected output and test file.
-Passing existing tests that never exercise the defect is insufficient. Keep
-`S-xxx`, executable verification and evidence citations even for a one-step plan.
-Describe risks through observed callers and failure cases; do not invent numeric
-probabilities or claim a risk is impossible without evidence.
-
-## Self-review
-
-Three passes, inline, before the plan is shown. Fix what you find; do not
-re-review.
-
-1. **Constraint coverage** — every `Q-xxx` maps to at least one step, or to an
-   explicit non-goal.
-2. **Placeholder scan** — the list above.
-3. **Name consistency** — `clearLayers()` in S-003 and `clearFullLayers()` in
-   S-007 is a bug, and it is invisible unless you look for it.
-
-## Self-containment
-
-Before offering to clear the context, read the plan as if you had never seen the
-conversation. If a step depends on something only the conversation knows — an
-agreed name, a rejected idea, a constraint that was mentioned but never written
-down — it is not in the plan yet. Put it in.
+`S-xxx` never changes once written. An inserted step takes the next free number.
