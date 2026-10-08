@@ -1,3 +1,10 @@
+# [3.2.0](https://github.com/maxgfr/skills/compare/v3.1.0...v3.2.0) (2026-10-08)
+
+
+### Features
+
+* automatic skills, one-call reviews, verify in the build worktree ([0e19c78](https://github.com/maxgfr/skills/commit/0e19c78c089987c08045dd3d4781ef5088a6bbe9))
+
 # [3.1.0](https://github.com/maxgfr/skills/compare/v3.0.0...v3.1.0) (2026-10-08)
 
 
