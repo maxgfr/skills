@@ -1,3 +1,10 @@
+## [6.0.1](https://github.com/maxgfr/skills/compare/v6.0.0...v6.0.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* **build:** say each tier carries its own effort, and that build leaves the worktree uncommitted ([c6e14bf](https://github.com/maxgfr/skills/commit/c6e14bff11de01b2c85e722f71123ab223de2b4f))
+
 # [6.0.0](https://github.com/maxgfr/skills/compare/v5.0.0...v6.0.0) (2026-10-08)
 
 
