@@ -24,12 +24,18 @@ function skillText(pluginRoot, name, relativePath = 'SKILL.md') {
   return existsSync(path) ? readFileSync(path, 'utf8') : ''
 }
 
-export function manualPolicy(pluginRoot, name, host) {
+// Shipped default: the agent may load the skill, but its description limits it
+// to explicit requests, so it runs when the user asks for it, not on its own.
+export const ON_REQUEST = /^description:.*\bonly when the user explicitly asks\b/im
+
+export function onRequestPolicy(pluginRoot, name, host) {
   const skill = skillText(pluginRoot, name)
-  if (!/^disable-model-invocation:\s*true\s*$/m.test(skill)) return false
+  if (!ON_REQUEST.test(skill)) return false
+  if (/^disable-model-invocation:\s*true\s*$/m.test(skill)) return false
+  if (/opencode\/autoinvoke:\s*['"]?false['"]?\s*$/m.test(skill)) return false
   if (host !== 'codex') return true
   const metadata = skillText(pluginRoot, name, join('agents', 'openai.yaml'))
-  return /^policy:\s*$[\s\S]*?^\s{2}allow_implicit_invocation:\s*false\s*$/m.test(metadata)
+  return /^policy:\s*$[\s\S]*?^\s{2}allow_implicit_invocation:\s*true\s*$/m.test(metadata)
 }
 
 export function hasExplicitInvocation(pluginRoot, name, host) {
@@ -64,8 +70,8 @@ export function doctor({ host, root, env = process.env } = {}) {
   }
   add('skills', skills.length === 3 && ['blueprint', 'build', 'verify'].every((name) => skills.includes(name)), `${skills.length} public skills: ${skills.join(', ') || 'none'}`)
 
-  const manualSkills = skills.filter((name) => manualPolicy(pluginRoot, name, host))
-  add('manual-policy', manualSkills.length === 3, `${manualSkills.length}/3 skills require explicit invocation`)
+  const onRequestSkills = skills.filter((name) => onRequestPolicy(pluginRoot, name, host))
+  add('on-request-policy', onRequestSkills.length === 3, `${onRequestSkills.length}/3 skills are model-invocable on explicit request`)
   const explicitSkills = skills.filter((name) => hasExplicitInvocation(pluginRoot, name, host))
   add('explicit-invocation', explicitSkills.length === 3, `${explicitSkills.length}/3 explicit invocations are advertised`)
 

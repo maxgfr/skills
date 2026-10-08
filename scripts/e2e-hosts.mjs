@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
-import { doctor, hasExplicitInvocation, manualPolicy } from './doctor.mjs'
+import { doctor, hasExplicitInvocation, onRequestPolicy } from './doctor.mjs'
 import { schedule } from '../skills/build/scripts/plan-steps.mjs'
 
 const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -27,7 +27,7 @@ function hostContract(host) {
   const checks = [
     ...diagnosis.checks.filter((item) => item.required).map((item) => check(`doctor:${item.id}`, item.ok, item.detail)),
     check('public-skills', diagnosis.skills.join(',') === 'blueprint,build,verify', diagnosis.skills.join(', ')),
-    check('manual-policy', diagnosis.skills.every((name) => manualPolicy(pluginRoot, name, host)), 'implicit invocation disabled'),
+    check('on-request-policy', diagnosis.skills.every((name) => onRequestPolicy(pluginRoot, name, host)), 'model-invocable, restricted to explicit requests'),
     check('invocation-syntax', diagnosis.skills.every((name) => hasExplicitInvocation(pluginRoot, name, host)), expected.join(', ')),
     check('no-registered-hooks', hooks && Object.keys(hooks).length === 0, 'hooks.json is present and empty'),
     check('manifest', manifest.name === 'maxgfr', manifestPath),
@@ -52,7 +52,7 @@ function behaviorHost(host) {
       prompt: renderedPrompt,
       expected,
       selected,
-      ok: publicSkills.has(item.skill) && manualPolicy(pluginRoot, item.skill, host) && selected === expected,
+      ok: publicSkills.has(item.skill) && onRequestPolicy(pluginRoot, item.skill, host) && selected === expected,
     }
   })
   for (const item of promptFixture.counter_prompts) {

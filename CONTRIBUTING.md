@@ -51,8 +51,8 @@ describes.
 
 ## Optional hook helpers
 
-`hooks/hooks.json` intentionally registers no hooks: every public skill requires
-explicit invocation. The dependency-free `session-start.mjs` and
+`hooks/hooks.json` intentionally registers no hooks: every public skill runs
+only when the user asks for it. The dependency-free `session-start.mjs` and
 `stop-guard.mjs` scripts remain optional helpers for users who wire them
 manually. They are tested as processes in `tests/hooks.test.mjs`; run them by
 hand with the JSON a host would send:

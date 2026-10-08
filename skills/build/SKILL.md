@@ -1,10 +1,9 @@
 ---
 name: build
-description: Use when the user explicitly invokes build to implement an approved plan and verify the changes.
-disable-model-invocation: true
+description: Use only when the user explicitly asks for build to implement an approved plan and verify the changes.
 license: MIT
 metadata:
-  opencode/autoinvoke: 'false'
+  opencode/autoinvoke: 'true'
 ---
 
 # build

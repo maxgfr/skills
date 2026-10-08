@@ -1,10 +1,9 @@
 ---
 name: verify
-description: Use when the user explicitly invokes verify to check completed work with repository gates and evidence.
-disable-model-invocation: true
+description: Use only when the user explicitly asks for verify to check completed work with repository gates and evidence.
 license: MIT
 metadata:
-  opencode/autoinvoke: 'false'
+  opencode/autoinvoke: 'true'
 ---
 
 # verify

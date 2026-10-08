@@ -4,7 +4,7 @@ My agent skills. One install, one place to keep them.
 
 They are process skills: they change how an agent works rather than what it knows. Small, composable, and meant to be hacked on — install them, read them, make them yours.
 
-The set grows. Today it is one loop, closed: an agent plans against a repo it half-remembered and a decision you never made, builds something else, and tells you it is done. `blueprint` asks until the decision is yours and grounds the plan in the repo. `build` executes that plan, one proven step at a time, in a worktree, without asking again. `verify` turns completion into an evidence-backed verdict. All three are manual: nothing runs until you invoke a skill by name, and [one setting per host](#manual-or-automatic) turns that around if you want it.
+The set grows. Today it is one loop, closed: an agent plans against a repo it half-remembered and a decision you never made, builds something else, and tells you it is done. `blueprint` asks until the decision is yours and grounds the plan in the repo. `build` executes that plan, one proven step at a time, in a worktree, without asking again. `verify` turns completion into an evidence-backed verdict. All three run on request: the agent calls a skill when you ask for it, never on its own, and [one setting per host](#on-request-or-explicit-only) makes it explicit-only if you want that.
 
 ## Install
 
@@ -38,8 +38,8 @@ setting:
 | Claude plugin | `/maxgfr:verify light docs/plans/x.md` |
 | Standalone Claude skill | `/verify light docs/plans/x.md` |
 
-Every installation keeps the skills explicit-only, and
-[Manual or automatic](#manual-or-automatic) is where you change that. The plugin
+Every installation ships the skills on request, and
+[On request or explicit-only](#on-request-or-explicit-only) is where you change that. The plugin
 registers no session or stop hooks. From a checkout, `node hooks/session-start.mjs --plain`
 prints an optional router for an instructions file; `hooks/stop-guard.mjs` is an
 optional guard you can wire yourself.
@@ -374,8 +374,8 @@ for a patch, `feat:` for a minor — which versions `package.json` and
 both `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` together,
 writes the changelog and tags.
 
-`npm run validate` is opinionated on purpose: model-invoked skills need a clear
-trigger, while explicit-only skills may use a human-facing summary. A skill
+`npm run validate` is opinionated on purpose: the agent routes on the
+description, so every skill needs a clear trigger. A skill
 pointing at a file that does not exist also fails the build.
 
 Adding a skill: [CONTRIBUTING.md](./CONTRIBUTING.md) · writing one well: [AGENTS.md](./AGENTS.md).
@@ -384,32 +384,33 @@ Adding a skill: [CONTRIBUTING.md](./CONTRIBUTING.md) · writing one well: [AGENT
 
 MIT
 
-## Manual or automatic
+## On request or explicit-only
 
-`blueprint`, `build` and `verify` ship **explicit-only**, and every installation
-path keeps them that way: they run when you invoke them, never when the agent
-feels like it. Use `$name` in Codex, `/name` in Claude Code or OpenCode, and
-`/maxgfr:name` when installed as a Claude plugin.
+`blueprint`, `build` and `verify` ship **model-invocable, on request**: each
+description restricts the skill to explicit requests, so the agent calls it
+when you ask for it, not on its own. Invoking by name always works: `$name` in
+Codex, `/name` in Claude Code or OpenCode, and `/maxgfr:name` when installed as
+a Claude plugin.
 
-Letting the agent choose a skill is one setting per host, applied to the
-**installed** copy of that skill:
+Making a skill explicit-only, so that only its name runs it, is one setting per
+host, applied to the **installed** copy of that skill:
 
-| Host | Shipped, manual | Automatic |
+| Host | Shipped, on request | Explicit-only |
 | --- | --- | --- |
-| Claude Code | `disable-model-invocation: true` in `SKILL.md` | delete that line, or set it to `false` |
-| Codex | `allow_implicit_invocation: false` under `policy:` in `agents/openai.yaml` | set it to `true` |
-| OpenCode | `metadata.opencode/autoinvoke: 'false'` in `SKILL.md` | delete that entry, or set it to `'true'` |
+| Claude Code | no `disable-model-invocation` in `SKILL.md` | add `disable-model-invocation: true` |
+| Codex | `allow_implicit_invocation: true` under `policy:` in `agents/openai.yaml` | set it to `false` |
+| OpenCode | `metadata.opencode/autoinvoke: 'true'` in `SKILL.md` | set it to `'false'` |
 
-Claude Code can do it without touching the file: put
-`"skillOverrides": { "verify": "on" }` in `settings.json`, where
-`"user-invocable-only"` forces manual mode back. Plugin installs ignore
-`skillOverrides`, so edit the frontmatter of the plugin copy instead. Updating
-or reinstalling restores the shipped default, so reapply the change afterwards.
+Claude Code can do it without touching the file:
+`"skillOverrides": { "verify": "user-invocable-only" }` in `settings.json`
+leaves `/verify` working while hiding the skill from the model. Plugin installs
+ignore `skillOverrides`, so edit the frontmatter of the plugin copy instead.
+Updating or reinstalling restores the shipped default, so reapply the change
+afterwards.
 
-OpenCode V1 reads no `autoinvoke` metadata. Keep them manual with
-`permission.skill` in `~/.config/opencode/opencode.json` or the project
-configuration, retaining unrelated permissions; dropping an entry, or setting
-`"allow"`, is what lets the agent reach that skill:
+OpenCode V1 reads no `autoinvoke` metadata; `permission.skill` in
+`~/.config/opencode/opencode.json` or the project configuration is how you force
+explicit-only there. Retain unrelated permissions:
 
 ```json
 {

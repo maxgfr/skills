@@ -1,10 +1,9 @@
 ---
 name: blueprint
-description: Use when the user explicitly invokes blueprint to ground decisions and prepare an implementation plan.
-disable-model-invocation: true
+description: Use only when the user explicitly asks for blueprint to ground decisions and prepare an implementation plan.
 license: MIT
 metadata:
-  opencode/autoinvoke: 'false'
+  opencode/autoinvoke: 'true'
 ---
 
 # blueprint
