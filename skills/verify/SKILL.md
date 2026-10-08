@@ -23,4 +23,4 @@ gate npm test 0
 finding src/a.ts:12 — <issue> · <failure scenario>
 ```
 
-Without an audit, end with `not audited`.
+Add one line per `notes` entry from step 1. Without an audit, end with `not audited`.

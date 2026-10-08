@@ -289,6 +289,29 @@ function runIn(scripts) {
   return { exit: r.status, out: JSON.parse(r.stdout), raw: r.stdout }
 }
 
+test('--run: a gate that rewrites a tracked file is named in a note; an untouched repo gets none', () => {
+  // An install run as a gate rewrote a lockfile, and the next gate failed on it.
+  const dir = mkdtempSync(join(tmpdir(), 'detect-run-'))
+  const git = (...a) => execFileSync('git', ['-C', dir, ...a], { stdio: 'pipe' })
+  try {
+    writeFileSync(join(dir, 'package-lock.json'), '{}')
+    writeFileSync(join(dir, 'lock.txt'), 'v1\n')
+    const pkg = (test) => writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'x', private: true, scripts: { test } }))
+    pkg('node -e ""')
+    git('init', '-q')
+    git('add', '-A')
+    git('-c', 'user.email=t@t', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'base')
+    const run = () => JSON.parse(spawnSync(process.execPath, [SCRIPT, '--cwd', dir, '--run'], { encoding: 'utf8' }).stdout)
+    assert.equal(run().notes, undefined)
+    pkg(`node -e "require('fs').writeFileSync('lock.txt','v2')"`)
+    git('add', '-A')
+    git('-c', 'user.email=t@t', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'mutating gate')
+    assert.ok(run().notes.some((n) => /The gates modified tracked files: lock\.txt/.test(n)))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('--run: all gates green is ok, exit 0, one compact line with no output kept', () => {
   const r = runIn({ test: 'node -e "console.log(1)"', lint: 'node -e ""' })
   assert.equal(r.exit, 0)

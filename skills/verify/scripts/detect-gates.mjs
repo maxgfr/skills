@@ -386,8 +386,20 @@ if (!gates.length) {
   )
 }
 
+// Tracked files with changes, or null outside a git repo. verify repairs
+// nothing, so a gate that rewrites one (an install bumping a lockfile) is
+// named: the gates after it ran on a tree the repo does not have.
+function trackedChanges() {
+  const r = spawnSync('git', ['-C', cwd, 'status', '--porcelain', '--untracked-files=no'], { encoding: 'utf8' })
+  return r.status === 0 ? new Set(r.stdout.split('\n').filter(Boolean).map((l) => l.slice(3))) : null
+}
+
 if (args.includes('--run')) {
+  const before = trackedChanges()
   const ran = gates.map(runGate)
+  const after = trackedChanges()
+  const touched = before && after ? [...after].filter((f) => !before.has(f)) : []
+  if (touched.length) notes.push(`The gates modified tracked files: ${touched.slice(0, 5).join(', ')}${touched.length > 5 ? ', …' : ''}. Restore them with git checkout.`)
   const failed = ran.some((g) => g.exit !== 0 && g.blocking !== false)
   const out = { ok: ran.length ? !failed : null, gates: ran }
   if (notes.length) out.notes = notes
