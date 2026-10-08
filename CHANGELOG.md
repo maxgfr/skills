@@ -1,3 +1,14 @@
+# [5.0.0](https://github.com/maxgfr/skills/compare/v4.1.1...v5.0.0) (2026-10-08)
+
+
+* feat!: skills are plain Markdown, no scripts ([e5bfe8a](https://github.com/maxgfr/skills/commit/e5bfe8a5a0eac8db65d9a4f2a5c59d34a1cfd14b))
+
+
+### BREAKING CHANGES
+
+* the skill scripts and the build Workflow are removed; the
+skills no longer need Node.
+
 ## [4.1.1](https://github.com/maxgfr/skills/compare/v4.1.0...v4.1.1) (2026-10-08)
 
 
