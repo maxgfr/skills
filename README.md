@@ -18,7 +18,7 @@ That works everywhere. Add `--skill verify` to take a single skill. Native plugi
 
 Work as usual: open your agent's plan mode, or just describe the change. blueprint takes over, asks its questions and writes the plan; approving it (leaving plan mode) is the only thing you do. build and verify follow on their own, build repairs what verify finds, and you get one line per step, a verdict, and the worktree with its changes left uncommitted for you to review, commit and merge.
 
-Each skill also runs alone: build on an approved plan in `docs/plans/`, verify on any finished work (checks only), or verify with a plan path to add the audit.
+Each skill also runs alone: build on an approved plan (blueprint saves it in `${TMPDIR:-/tmp}/plans/<repo>/`, and in `docs/plans/` only when you ask to keep it), verify on any finished work (checks only), or verify with a plan path to add the audit.
 
 ## How the work is split
 
