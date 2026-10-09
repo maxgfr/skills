@@ -1,3 +1,10 @@
+## [6.0.2](https://github.com/maxgfr/skills/compare/v6.0.1...v6.0.2) (2026-10-09)
+
+
+### Bug Fixes
+
+* blueprint routes a described feature, build prints its steps before verify ([8f4ca44](https://github.com/maxgfr/skills/commit/8f4ca4499b3bd5b5d4390dfb6090616012caa280))
+
 ## [6.0.1](https://github.com/maxgfr/skills/compare/v6.0.0...v6.0.1) (2026-10-08)
 
 
