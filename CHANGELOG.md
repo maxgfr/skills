@@ -1,3 +1,10 @@
+## [6.1.1](https://github.com/maxgfr/skills/compare/v6.1.0...v6.1.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* **build:** reviewers judge only their own step, a blocked step goes straight to large, and steps and script pass by reference ([f7e3988](https://github.com/maxgfr/skills/commit/f7e3988db94a31c9cb750285fcf085809d0ba8a9))
+
 # [6.1.0](https://github.com/maxgfr/skills/compare/v6.0.2...v6.1.0) (2026-10-09)
 
 
