@@ -46,6 +46,14 @@ With no config, every tier is your session's model. To pick models, write `~/.ag
 
 A tier is `{ "model", "effort" }` or just a model name, which runs at your session's effort: set `effort` to push a small model further (`"max"` above). `review` (default `"medium"`) and `audit` (`"large"`) move those two roles; the rest is the session's call.
 
+## Make blueprint fire every time
+
+A skill's description competes with everything else in the session: your own instructions and other plugins' skills. Plan mode and "make a plan" always reach blueprint; a plain "add X" may go straight to code. To route every non-trivial change through it, add one line to your `CLAUDE.md` or `AGENTS.md`:
+
+```
+For any feature or change that spans several files or leaves a decision open, invoke the blueprint skill before writing code.
+```
+
 ## Run only on request
 
 All three run on their own when they fit. To keep one for explicit calls: add `disable-model-invocation: true` to its `SKILL.md` (Claude Code), set `allow_implicit_invocation: false` in `agents/openai.yaml` (Codex), or set `metadata.opencode/autoinvoke: 'false'` (OpenCode).

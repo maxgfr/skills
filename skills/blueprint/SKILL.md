@@ -1,6 +1,6 @@
 ---
 name: blueprint
-description: Plan a code change before writing it — settle open decisions with the user, cite the repo, write an approved docs/plans/ file. Use when a code change is being planned, in plan mode or not, when the user asks for a plan, or before a change that spans several files or leaves a design decision open.
+description: Plan a code change before writing it — settle open decisions with the user, cite the repo, write an approved docs/plans/ file. Use when the user describes a feature or change that spans several files or leaves a decision open: invoke it first, before writing any code or test and before any other skill that does, even if they ask for it to be built right away. Also in plan mode, or when the user asks for a plan. Not for a one-file fix.
 license: MIT
 metadata:
   opencode/autoinvoke: 'true'
