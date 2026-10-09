@@ -19,7 +19,7 @@
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/exec": "^6.0.3",
     "@semantic-release/git": "^10.0.1",
-    "semantic-release": "^24.2.3",
+    "semantic-release": "^25.0.9",
     "yaml": "2.9.1"
   }
 }
