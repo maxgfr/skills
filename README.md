@@ -26,7 +26,7 @@ Each skill also runs alone: build on an approved plan in `docs/plans/`, verify o
 |---|---|
 | Plan | your session |
 | Build | one subagent per step, in parallel: `small` by default, `large` for a UI step, `medium` or more for a security step; a reviewer per step (`review`, `large` for security); a smaller implementer can hand its step to `large`; a failed try retries one tier up |
-| Repair | after a verify `FAIL`, one fixer per file, `medium` then `large`, three rounds at most |
+| Repair | after a verify `FAIL`, one fixer per file, one after another, `medium` then `large`, three rounds at most |
 | Final audit | `large` |
 
 verify never prints a verdict without running the checks, never installs or writes, and the reviewer and the audit reject a skipped test, a silenced checker or an edited gate.

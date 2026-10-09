@@ -9,4 +9,4 @@ Give each step the tier its work needs; when two lines fit, take the larger:
 - `medium` for a step whose logic spans calls or state: a form saved twice, a cache, a retry.
 - `small` for the rest.
 
-A failed try moves the step one tier up, from `small` to `medium` to `large`, three tries at most. A `small` or `medium` implementer that judges the step beyond it hands it straight to `large`, without spending a try. A repair runs at `medium` in its first round and at `large` after.
+A failed try moves the step one tier up, from `small` to `medium` to `large`, three tries at most. A `small` or `medium` implementer that judges the step beyond it, or that a rule stops, hands it straight to `large` without spending a try; `large` stopped by a rule blocks the step. A repair runs at `medium` in its first round and at `large` after.

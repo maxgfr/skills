@@ -17,7 +17,6 @@ const TIERS = { small: { model: 'tiny', effort: 'max' }, medium: { model: 'mid',
 
 const step = (id, { waits = [], files = [`${id}.md`], tier = 'small', reviewTier = 'medium', security = false } = {}) => ({
   id,
-  block: `### ${id} — demo step`,
   waits,
   files,
   tier,
@@ -76,7 +75,7 @@ test('independent steps start together, a dependent one after their reviews, eac
   assert.equal(first.opts.model, 'tiny')
   assert.equal(first.opts.effort, 'max')
   assert.match(first.prompt, /Work and run commands only in \/wt/)
-  assert.match(first.prompt, /### S-001 — demo step/)
+  assert.match(first.prompt, /the `### S-001` block of \/plan\.md/)
   assert.equal(calls[at(calls, 'review', 'S-001')].opts.model, 'mid')
 })
 
@@ -106,15 +105,31 @@ test('three rejected tries block the step on the large tier, and the steps after
   )
 })
 
-test('a blocked_by retries one tier up with it as the issue, without a review', async () => {
+test('a blocked_by below large hands the step to large without spending a try or a review', async () => {
   let tries = 0
   const { result, calls } = await run({ steps: [step('S-001')] }, (kind) =>
-    kind === 'implement' && tries++ === 0 ? { exit: -1, blocked_by: 'needs a gate change' } : pass(kind),
+    kind === 'implement' && tries++ === 0 ? { exit: -1, blocked_by: 'the test contradicts the plan' } : pass(kind),
   )
-  assert.equal(result.steps[0].status, 'done')
-  assert.equal(result.steps[0].by, 'medium')
+  assert.deepEqual(result.steps[0], { id: 'S-001', status: 'done', exit: 0, by: 'large' })
+  const [small, large] = calls.filter((call) => call.kind === 'implement')
+  assert.equal(small.opts.model, 'tiny')
+  assert.equal(large.opts.model, undefined)
+  assert.match(large.prompt, /A smaller model handed this step to you: the test contradicts the plan/)
   assert.equal(calls.filter((call) => call.kind === 'review').length, 1)
-  assert.match(calls.filter((call) => call.kind === 'implement')[1].prompt, /- needs a gate change/)
+})
+
+test('a blocked_by on the large tier blocks the step at once', async () => {
+  const { result, calls } = await run({ steps: [step('S-001', { tier: 'large' })] }, (kind) =>
+    kind === 'implement' ? { exit: 1, blocked_by: 'the test contradicts the plan' } : pass(kind),
+  )
+  assert.deepEqual(result.steps[0], {
+    id: 'S-001',
+    status: 'blocked',
+    exit: 1,
+    by: 'large',
+    note: 'the test contradicts the plan',
+  })
+  assert.equal(calls.length, 1)
 })
 
 test('a smaller implementer can hand its step straight to the large tier without spending a try', async () => {
@@ -294,4 +309,19 @@ test('steps sharing a file follow the Depends on order, not the plan order, so n
     ],
   )
   assert.ok(at(calls, 'implement', 'S-001') > at(calls, 'review', 'S-002'))
+})
+
+test('a tier given as a bare model name runs on that model', async () => {
+  const { calls } = await run({ tiers: { small: 'tiny', medium: 'mid' }, steps: [step('S-001')] }, pass)
+  assert.deepEqual(calls[at(calls, 'implement', 'S-001')].opts.model, 'tiny')
+  assert.equal(calls[at(calls, 'implement', 'S-001')].opts[0], undefined)
+  assert.equal(calls[at(calls, 'review', 'S-001')].opts.model, 'mid')
+})
+
+test('the reviewer looks only at its own Files, since other steps share the worktree', async () => {
+  const { calls } = await run({ steps: [step('S-001', { files: ['a.md', 'b.md'] })] }, pass)
+  const review = calls[at(calls, 'review', 'S-001')].prompt
+  assert.match(review, /look only at its Files and ignore every other change/)
+  assert.match(review, /git status --short -- a\.md b\.md/)
+  assert.doesNotMatch(review, /nothing is outside its Files/)
 })

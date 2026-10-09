@@ -1,10 +1,16 @@
 # Running the steps as a workflow
 
-For a host whose workflow tool runs a script of subagents with `agent()` and `parallel()`. Pass the script below verbatim, and as `args`:
+For a host whose workflow tool runs a script of subagents with `agent()`. Write the script below to a file once, then run the tool with that file as its script path (or, if it takes no path, with the script text verbatim) and the `args` below; the repair rounds reuse the file:
+
+~~~sh
+awk '/^```js$/{f=1;next} /^```$/{f=0} f' "<this skill's directory>/references/workflow.md" > "<a scratch directory>/build-steps.js"
+~~~
+
+`args`:
 
 - `worktree`: the worktree's absolute path; `plan`: the plan's absolute path.
-- `tiers`: `{ small, medium, large }`, each `{ model, effort }` read as `references/tiers.md` says, leaving out a key the tier inherits from you.
-- To build, `steps`: per step, in `Depends on` order, `{ id, block, waits, files, tier, reviewTier, security }`, where `block` is its `### S-xxx` block verbatim, `waits` its `Depends on` ids written out one by one (a range such as `S-001…S-009` expanded), `files` the paths in its Files, and `reviewTier` one of `small`, `medium`, `large`: the `review` tier of `references/tiers.md`, or `large` for a security step.
+- `tiers`: `{ small, medium, large }`, each `{ model, effort }` or a bare model name, read as `references/tiers.md` says, leaving out a key the tier inherits from you.
+- To build, `steps`: per step, in `Depends on` order, `{ id, waits, files, tier, reviewTier, security }`, where `waits` is its `Depends on` ids written out one by one (a range such as `S-001…S-009` expanded), `files` the paths in its Files, and `reviewTier` one of `small`, `medium`, `large`: the `review` tier of `references/tiers.md`, or `large` for a security step. Each subagent reads its step from the plan.
 - To repair instead, `repair`: `{ round, groups }`, where `groups` is `[{ file, lines }]`, verify's failing `gate` lines (exit code not 0) and its `finding` lines, never a passing gate, grouped by the file they name, with `file` set to `-` for the lines that name none. Its fixers run one after another: the groups with a file in their order, then `-`.
 
 A build returns `{ steps: [{ id, status, exit, by, note }], forbidden }` and a repair `{ fixes: [{ file, fixed, note, by }] }`. Revert each `forbidden` hunk yourself.
@@ -21,9 +27,12 @@ const RULE =
 const UP = { small: 'medium', medium: 'large', large: 'large' }
 const TRIES = 3
 
-// A tier's { model, effort }; a key left out inherits the session's.
-const on = (tier) =>
-  Object.fromEntries(Object.entries((args.tiers || {})[tier] || {}).filter(([, value]) => value))
+// A tier is { model, effort } or a bare model name; a key left out inherits the session's.
+const on = (tier) => {
+  const value = (args.tiers || {})[tier]
+  const opts = typeof value === 'string' ? { model: value } : value || {}
+  return Object.fromEntries(Object.entries(opts).filter(([, setting]) => setting))
+}
 
 const IMPLEMENTED = {
   type: 'object',
@@ -48,11 +57,9 @@ const FIXED = {
 
 const implementerPrompt = (step, tier, issues, handoff) => `Work and run commands only in ${args.worktree}; do not commit.
 
-Implement this step, nothing more:
+Implement this step, nothing more: the \`### ${step.id}\` block of ${args.plan}.
 
-${step.block}
-
-Touch only its Files, run its Verify once, use few tool calls.
+Other steps are built in this worktree at the same time: touch only its Files. Run its Verify once, use few tool calls.
 Never ${RULE}; if the step needs that, stop and return blocked_by.${
   tier === 'large'
     ? ''
@@ -68,12 +75,10 @@ Return JSON: exit (Verify's exit code, -1 if not run), blocked_by (only if you s
 
 const reviewerPrompt = (step) => `Work and run commands only in ${args.worktree}; do not commit. Edit nothing.
 
-Review this step:
+Review this step: the \`### ${step.id}\` block of ${args.plan}.
 
-${step.block}
-
-Read its diff once: \`git diff HEAD -- ${step.files.join(' ')}\` plus its new files. Rerun its Verify once.
-Check every Change is in, Preserve is kept, nothing is outside its Files, no debug or dead code.${
+Other steps are built in this worktree at the same time: look only at its Files and ignore every other change. Read their diff once: \`git diff HEAD -- ${step.files.join(' ')}\`, and \`git status --short -- ${step.files.join(' ')}\` for the new ones. Rerun its Verify once.
+Check every Change is in, Preserve is kept, no debug or dead code.${
   step.security
     ? ' It touches security: list as issues any injection, path traversal, missing authorization or validation, and leaked secret.'
     : ''
@@ -201,33 +206,33 @@ async function build(step) {
       ...on(tier),
     })
     if (!implemented) return { id: step.id, status: 'unproven', exit: '-', by: tier, note: 'implementer never answered' }
-    // A smaller model that judges the step beyond it hands it to the largest at once; that try is not counted.
-    if (implemented.escalate && tier !== 'large') {
-      handoff = implemented.escalate
+    // A smaller model that judges the step beyond it, or that a rule stops, hands it to the largest at once, and that
+    // try is not counted; the largest stopped by a rule blocks the step.
+    const reason = implemented.escalate || implemented.blocked_by
+    if (reason && tier !== 'large') {
+      handoff = reason
       tier = 'large'
       tryNo--
       continue
     }
-    last = { exit: implemented.exit, by: tier }
-    if (implemented.blocked_by) issues = [implemented.blocked_by]
-    else {
-      const review = await agent(reviewerPrompt(step), {
-        label: `review ${step.id}`,
-        phase: 'Review',
-        schema: REVIEWED,
-        ...on(step.reviewTier),
-      })
-      if (!review)
-        return { id: step.id, status: 'unproven', exit: implemented.exit, by: tier, note: 'reviewer never answered' }
-      last = { exit: review.exit, by: tier }
-      if (review.forbidden.length) {
-        forbidden.push(...review.forbidden)
-        return { id: step.id, status: 'blocked', exit: review.exit, by: tier, note: review.forbidden[0] }
-      }
-      if (implemented.exit === 0 && review.exit === 0 && review.ok)
-        return { id: step.id, status: 'done', exit: 0, by: tier }
-      issues = review.issues.length ? review.issues : [`Verify exited ${review.exit}`]
+    if (implemented.blocked_by)
+      return { id: step.id, status: 'blocked', exit: implemented.exit, by: tier, note: implemented.blocked_by }
+    const review = await agent(reviewerPrompt(step), {
+      label: `review ${step.id}`,
+      phase: 'Review',
+      schema: REVIEWED,
+      ...on(step.reviewTier),
+    })
+    if (!review)
+      return { id: step.id, status: 'unproven', exit: implemented.exit, by: tier, note: 'reviewer never answered' }
+    last = { exit: review.exit, by: tier }
+    if (review.forbidden.length) {
+      forbidden.push(...review.forbidden)
+      return { id: step.id, status: 'blocked', exit: review.exit, by: tier, note: review.forbidden[0] }
     }
+    if (implemented.exit === 0 && review.exit === 0 && review.ok)
+      return { id: step.id, status: 'done', exit: 0, by: tier }
+    issues = review.issues.length ? review.issues : [`Verify exited ${review.exit}`]
     tier = UP[tier]
   }
   return { id: step.id, status: 'blocked', exit: last.exit, by: last.by, note: issues[0] }
