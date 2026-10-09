@@ -1,3 +1,10 @@
+# [6.1.0](https://github.com/maxgfr/skills/compare/v6.0.2...v6.1.0) (2026-10-09)
+
+
+### Features
+
+* build delegates every step to tiered subagents and repairs what verify finds ([06d72c9](https://github.com/maxgfr/skills/commit/06d72c9ce609c002171a9740fc08c64b9afcb940))
+
 ## [6.0.2](https://github.com/maxgfr/skills/compare/v6.0.1...v6.0.2) (2026-10-09)
 
 
