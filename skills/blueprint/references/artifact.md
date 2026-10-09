@@ -32,9 +32,9 @@ status: awaiting-approval
 A small model reads each step alone:
 
 1. Exact paths and symbols; no choice left open.
-2. Never "same as S-003". A symbol a step uses comes from a step it depends on. Steps sharing no file and no dependency run in parallel.
+2. Never "same as S-003". A symbol a step uses comes from a step it depends on. Steps sharing no file and no dependency run in parallel, so make a step depend on another whenever a half-done edit of one breaks the other's Verify (two steps compiled into one crate or package).
 3. One step, one diff a reviewer judges at a glance.
-4. Verify is one command with a binary result, ideally the repo's test command on one file; for a bug fix, a test that fails first.
+4. Verify is one command with a binary result, ideally the repo's test command on one file; for a bug fix, a test that fails first. Its exit code is the result: wrap a count in `test "$(…)" = N` (`grep -c` exits 1 when it counts zero), and make a test-name filter match every test the step names.
 5. UI work and security-sensitive work each get steps of their own: build gives them a larger tier than the rest.
 
 Every `Q-xxx` maps to a step or a non-goal. `S-xxx` numbers never change.

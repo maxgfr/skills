@@ -1,6 +1,6 @@
 ---
 name: build
-description: Implement an approved plan in a worktree with one subagent per step on the tier the step needs and a reviewer for each, then run verify and repair until it passes. Use when a plan was just approved, including on leaving plan mode, or when an approved docs/plans/ plan exists and the user wants it implemented.
+description: Implement an approved plan in a worktree with one subagent per step on the tier the step needs and a reviewer for each, then run verify and repair until it passes. Use when a plan was just approved, including on leaving plan mode, or when an approved plan exists and the user wants it implemented.
 license: MIT
 metadata:
   opencode/autoinvoke: 'true'
@@ -8,9 +8,9 @@ metadata:
 
 # build
 
-Implement an approved plan in a git worktree with subagents, never committing. Argument: none (the newest `status: approved` plan in `docs/plans/`) or `<path>`.
+Implement an approved plan in a git worktree with subagents, never committing. Argument: none (the newest `status: approved` plan in `${TMPDIR:-/tmp}/plans/<repo>/`, else in `docs/plans/`) or `<path>`.
 
-1. Read the plan. A plan approved in plan mode but not in `docs/plans/` yet: save it there first, `status: approved`, one `### S-xxx — title` per step with `Files`, `Depends on`, `Change`, `Preserve` and `Verify`. When reading the plan, a `Depends on` range such as `S-001…S-009` counts as each id in it; never rewrite the plan for it. Stop in one line if the plan is not approved, a step has no Verify command, `Depends on` names a step that does not exist, or `Depends on` loops.
+1. Read the plan. A plan approved in plan mode but not saved yet: save it first at `${TMPDIR:-/tmp}/plans/<repo>/<YYYY-MM-DD>-<slug>.md` (in `docs/plans/` only when the user asks to keep it), `status: approved`, one `### S-xxx — title` per step with `Files`, `Depends on`, `Change`, `Preserve` and `Verify`. When reading the plan, a `Depends on` range such as `S-001…S-009` counts as each id in it; never rewrite the plan for it. Stop in one line if the plan is not approved, a step has no Verify command, `Depends on` names a step that does not exist, or `Depends on` loops.
 2. From the repo root, with `<slug>` the plan's file name without its date: `git worktree add -b build/<slug> ../<repo>-build-<slug> HEAD`. Work only there. If the tree is dirty beyond the plan file, say those changes are not in the build.
 3. Order the steps by `Depends on` and give each its tier (`references/tiers.md`).
 4. Delegate every step; never code one yourself. One implementer per step and one reviewer per implementation, each step starting as soon as the steps it waits for are `done`, so independent steps run at the same time: fifteen steps is fifteen implementers, launch them all. With a workflow tool that runs a script of subagents (`agent()`), run `references/workflow.md`; with none, or if it refuses the run or is not allowed, use your subagent tool as `references/dispatch.md` says. Only with no subagent tool at all, build alone as below; the tier column then reads `solo`.
