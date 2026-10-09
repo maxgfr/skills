@@ -1,3 +1,10 @@
+# [6.2.0](https://github.com/maxgfr/skills/compare/v6.1.1...v6.2.0) (2026-10-09)
+
+
+### Features
+
+* **blueprint,build:** keep plans out of the repository unless asked ([#2](https://github.com/maxgfr/skills/issues/2)) ([26d16ca](https://github.com/maxgfr/skills/commit/26d16ca2607560dccb2ffd661b224c12d447ca27))
+
 ## [6.1.1](https://github.com/maxgfr/skills/compare/v6.1.0...v6.1.1) (2026-10-09)
 
 
