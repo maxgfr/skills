@@ -12,6 +12,7 @@ skills/<name>/
 ## Rules
 
 - **Markdown only.** A skill is instructions for a capable model, with nothing to install or run. `npm run validate` fails on any other file under `skills/`.
+- **One script.** skills/build/references/workflow.md holds the build loop as a workflow script in a fenced js block, the only host-specific syntax under skills/: it stays Markdown, and tests/build-workflow.test.mjs runs it with stub subagents.
 - **Short and natural.** A `SKILL.md` fails validation past 50 lines. Write plain sentences: no "why" for humans, no repetition, no per-host invocation syntax.
 - **The description is the trigger.** Say when to use the skill, in the words a user would type. `npm run validate` rejects a description with no trigger clause.
 - **Every reference is linked from `SKILL.md`.** An orphan is never opened. Validated.

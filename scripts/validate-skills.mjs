@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-// validate-skills.mjs — the repo's own gate. Zero dependencies.
+// validate-skills.mjs — the repo's own gate. One dependency: `yaml`, pinned to
+// the version the skills installer parses frontmatter with, so a SKILL.md this
+// gate passes is one the installer reads.
 //
 // A skill that never triggers is dead weight, and a skill pointing at a file
 // that does not exist wastes a real agent's turn discovering it. Both are
@@ -10,6 +12,7 @@
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs'
 import { join, dirname, basename, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parse } from 'yaml'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const quiet = process.argv.includes('--quiet')
@@ -105,7 +108,29 @@ function parseFrontmatter(text, file) {
   for (const key of Object.keys(fields)) {
     fields[key] = fields[key].replace(/^["']|["']$/g, '')
   }
-  return { fields, body: text.slice(end + 4) }
+  return { fields, block, body: text.slice(end + 4) }
+}
+
+// The parser above is lenient; the skills installer is not. It reads the block
+// with `parse` from the `yaml` package, default options, and skips any skill
+// whose frontmatter throws — a colon in a plain value, a bad escape in double
+// quotes, a duplicate key — or whose name or description is not a string. So the block goes through that same parser, pinned to
+// the installer's version, rather than a hand-written approximation of it.
+export function yamlProblems(block) {
+  const hint =
+    'The skills installer parses frontmatter with this same YAML parser and would skip the skill. Quote the value (single quotes, doubling any \' inside) or fix the YAML.'
+  let data
+  try {
+    data = parse(block)
+  } catch (err) {
+    return [`frontmatter is not valid YAML: ${String(err.message).split('\n')[0].replace(/:$/, '')}. ${hint}`]
+  }
+  if (data === null || typeof data !== 'object' || Array.isArray(data))
+    return [`frontmatter does not parse to a mapping of keys to values. ${hint}`]
+  // The installer also skips a skill whose name or description parses to anything but a string.
+  const notStrings = ['name', 'description'].filter((key) => key in data && typeof data[key] !== 'string')
+  if (notStrings.length) return [`frontmatter ${notStrings.map((key) => `"${key}"`).join(' and ')} must parse to a string. ${hint}`]
+  return []
 }
 
 // ---------------------------------------------------------------- checks
@@ -141,9 +166,11 @@ export function validate(dir = root) {
     const text = readFileSync(file, 'utf8')
     const parsed = parseFrontmatter(text, file)
     if (!parsed) continue
-    const { fields, body } = parsed
+    const { fields, block, body } = parsed
     const dirName = basename(dir)
     checked.push(dirName)
+
+    for (const message of yamlProblems(block)) fail(file, message)
 
     const lineCount = text.replace(/\n$/, '').split('\n').length
     if (lineCount > SKILL_LINE_BUDGET)

@@ -1,7 +1,7 @@
 # Contributing
 
 ```bash
-npm ci          # release tooling only; the skills need nothing
+npm ci          # the validator and release tooling; the skills need nothing
 npm run check   # validate + tests + plugin versions
 ```
 

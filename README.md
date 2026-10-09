@@ -16,7 +16,7 @@ That works everywhere. Add `--skill verify` to take a single skill. Native plugi
 
 ## Use
 
-Work as usual: open your agent's plan mode, or just describe the change. blueprint takes over, asks its questions and writes the plan; approving it (leaving plan mode) is the only thing you do. build and verify follow on their own, and you get one line per step, a verdict, and the worktree with its changes left uncommitted for you to review, commit and merge.
+Work as usual: open your agent's plan mode, or just describe the change. blueprint takes over, asks its questions and writes the plan; approving it (leaving plan mode) is the only thing you do. build and verify follow on their own, build repairs what verify finds, and you get one line per step, a verdict, and the worktree with its changes left uncommitted for you to review, commit and merge.
 
 Each skill also runs alone: build on an approved plan in `docs/plans/`, verify on any finished work (checks only), or verify with a plan path to add the audit.
 
@@ -25,10 +25,13 @@ Each skill also runs alone: build on an approved plan in `docs/plans/`, verify o
 | Job | Who |
 |---|---|
 | Plan | your session |
-| Build | your session alone for a short plan; for a long one, `small` or `medium` per step (the session picks), `medium` reviews each wave |
+| Build | one subagent per step, in parallel: `small` by default, `large` for a UI step, `medium` or more for a security step; a reviewer per step (`review`, `large` for security); a smaller implementer can hand its step to `large`; a failed try retries one tier up |
+| Repair | after a verify `FAIL`, one fixer per file, `medium` then `large`, three rounds at most |
 | Final audit | `large` |
 
 verify never prints a verdict without running the checks, never installs or writes, and the reviewer and the audit reject a skipped test, a silenced checker or an edited gate.
+
+In Claude Code, build runs the steps as a Workflow, the deterministic script in skills/build/references/workflow.md. A plan of fifteen steps launches fifteen implementers at once, past the default workflow size: raise "Dynamic workflow size" in /config. Other hosts run the same loop with their subagent tool.
 
 ## Models (optional)
 

@@ -3,9 +3,10 @@
 // trigger check only accepted one phrasing, so it failed skills that route fine.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   LISTING_CAP,
   TRIGGER,
@@ -13,7 +14,10 @@ import {
   MODEL_NAME,
   extractReferences,
   validate,
+  yamlProblems,
 } from '../scripts/validate-skills.mjs'
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 // A throwaway repo with one skill whose SKILL.md is `lines` long, plus
 // whatever else the test writes into it.
@@ -81,6 +85,82 @@ test('a model name anywhere under skills/ fails; tier words pass', () => {
   } finally {
     rmSync(named, { recursive: true, force: true })
     rmSync(tiers, { recursive: true, force: true })
+  }
+})
+
+test('the frontmatter is judged by the installer\'s own YAML parser, yaml 2.9.1', () => {
+  // The skills installer (skills@1.5.23) reads frontmatter with `parse` from
+  // yaml 2.9.1 and skips the skill when it throws. A plain value holding ": "
+  // reads as a nested mapping there, so it must fail here; quoted, it passes.
+  const description = 'Plans a change before it is written. Use when a decision is open: invoke it first.'
+  const withDescription = (value) => (dir) =>
+    writeFileSync(join(dir, 'skills', 'demo', 'SKILL.md'), `---\nname: demo\ndescription: ${value}\n---\nbody\n`)
+  const unquoted = fixtureRepo(10, withDescription(description))
+  const quoted = fixtureRepo(10, withDescription(`'${description}'`))
+  try {
+    const bad = validate(unquoted).problems
+    assert.ok(bad.some((p) => /not valid YAML/.test(p.message) && /would skip the skill/.test(p.message)), JSON.stringify(bad))
+    assert.deepEqual(validate(quoted).problems, [])
+  } finally {
+    rmSync(unquoted, { recursive: true, force: true })
+    rmSync(quoted, { recursive: true, force: true })
+  }
+
+  // `invalid` is yaml 2.9.1's own verdict on `name: demo` + the lines, checked
+  // by hand against that version (true: `parse` throws, or name or description
+  // is not a string, so the installer skips the skill). The validator must
+  // report a problem exactly when it is true.
+  const scenarios = [
+    // a continuation line of a multi-line plain value holding ": ", and a nested value holding ": "
+    { lines: 'description: Plan a change.\n  Use when a decision is open: invoke it first.', invalid: true },
+    { lines: `description: ${description}\nmetadata:\n  opencode/autoinvoke: a: b`, invalid: true },
+    // a colon at end of line or before a tab
+    { lines: 'description: Use when the user says:', invalid: true },
+    { lines: 'description: Use when:\tx', invalid: true },
+    // text after a closing quote, and a leading YAML indicator
+    { lines: "description: 'Plan' it: now", invalid: true },
+    { lines: 'description: "x" y: z', invalid: true },
+    { lines: 'description: @foo', invalid: true },
+    { lines: 'description: *foo', invalid: true },
+    { lines: 'description: `x`', invalid: true },
+    // an invalid backslash escape inside double quotes
+    { lines: 'description: "Matches \\d digits"', invalid: true },
+    // a duplicate top-level key
+    { lines: 'description: First copy.\ndescription: Second copy.', invalid: true },
+    // a description that parses to a map, not a string: the installer skips it too
+    { lines: 'description:\n  Use when the user asks to plan a change: plan it first, then build it.', invalid: true },
+    // quoted values, with and without a nested map
+    { lines: `description: '${description}'\nlicense: MIT`, invalid: false },
+    { lines: "description: 'It''s a plan for a change. Use when a decision is open: invoke it first.'", invalid: false },
+    { lines: `description: '${description}'\nmetadata:\n  opencode/autoinvoke: 'true'`, invalid: false },
+    // a colon not followed by a space, a block scalar, a flow list and a block list
+    { lines: `description: '${description}'\nallowed-tools: Bash(git diff:*), Read`, invalid: false },
+    { lines: 'description: >\n  Plans a change before it is written. Use when a decision is open: invoke it first.', invalid: false },
+    { lines: `description: '${description}'\nallowed-tools: [Read, Grep]`, invalid: false },
+    { lines: `description: '${description}'\nallowed-tools:\n  - Read\n  - Grep`, invalid: false },
+  ]
+  for (const { lines, invalid } of scenarios) {
+    const found = yamlProblems(`name: demo\n${lines}`)
+    assert.equal(found.length > 0, invalid, `yaml 2.9.1 ${invalid ? 'rejects' : 'accepts'} ${JSON.stringify(lines)} → ${JSON.stringify(found)}`)
+    if (invalid) assert.ok(found.length === 1 && /would skip the skill/.test(found[0]), JSON.stringify(found))
+
+    // The same verdict reaches the full run over a repo.
+    const repo = fixtureRepo(10, (dir) =>
+      writeFileSync(join(dir, 'skills', 'demo', 'SKILL.md'), `---\nname: demo\n${lines}\n---\nbody\n`),
+    )
+    try {
+      const reported = validate(repo).problems.some((p) => /would skip the skill/.test(p.message))
+      assert.equal(reported, invalid, `validate on ${JSON.stringify(lines)}`)
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  }
+
+  // The real skills' frontmatter, as shipped, parses in yaml 2.9.1.
+  for (const name of ['blueprint', 'build', 'verify']) {
+    const text = readFileSync(join(repoRoot, 'skills', name, 'SKILL.md'), 'utf8')
+    const block = text.slice(4, text.indexOf('\n---', 4))
+    assert.deepEqual(yamlProblems(block), [], `skills/${name}/SKILL.md`)
   }
 })
 

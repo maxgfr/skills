@@ -35,5 +35,6 @@ A small model reads each step alone:
 2. Never "same as S-003". A symbol a step uses comes from a step it depends on. Steps sharing no file and no dependency run in parallel.
 3. One step, one diff a reviewer judges at a glance.
 4. Verify is one command with a binary result, ideally the repo's test command on one file; for a bug fix, a test that fails first.
+5. UI work and security-sensitive work each get steps of their own: build gives them a larger tier than the rest.
 
 Every `Q-xxx` maps to a step or a non-goal. `S-xxx` numbers never change.

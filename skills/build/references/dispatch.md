@@ -1,40 +1,11 @@
-# Delegating the steps
+# Delegating with a subagent tool
 
-**Tiers.** Read `~/.agents/models.json`, then `<repo>/.agents/models.json`, which wins key by key. Under your host's name (`claude`, `codex`, `opencode`…), `small`, `medium` and `large` are `{ "model", "effort" }` or a bare model name; `review` is the reviewer's tier (default `medium`). Anything missing (a bare model name has no effort), or a tool that takes no model, means your own model and effort. Pick each step's tier yourself: `small` for a plain step, `medium` for a tricky one.
+With a subagent tool and no workflow run: run by hand the loop the script of `references/workflow.md` codes. The prompts are the template literals of its `implementerPrompt`, `reviewerPrompt` and `fixerPrompt`, `${…}` filled in by hand. Each subagent runs on the model and effort of its tier (`references/tiers.md`).
 
-**Loop**, wave by wave. A wave is every step whose dependencies are `done`, minus any that shares a file with another step of the wave (it waits for the next).
+1. In one message, launch an implementer for every step whose waits are all `done`. A step waits for its `Depends on` and for any earlier step that shares a file.
+2. As each implementer answers, launch its reviewer, and launch every step that just became ready, without waiting for the others. A subagent tool that returns only when every call of a message answered runs in waves: each message launches every ready implementer and the reviewer of every implementer that answered.
+3. Reviewer `forbidden` not empty: revert those hunks yourself, mark the step `blocked`, and launch no new implementer. Implementers already running finish and are reviewed. A step never launched, or whose running try is rejected and so cannot retry, is `skipped` with the note `stopped on a forbidden change`.
+4. Implementer and reviewer `exit` 0 and `ok`: `done`. Otherwise retry one tier up, the reviewer's issues listed after `The previous attempt was rejected. Fix every item:`, three tries at most, then `blocked`. A `blocked_by` retries one tier up with it as the issue. An `escalate` hands the step straight to `large` with its reason, and that try does not count.
+5. A step waiting for one that is not `done` is `skipped`. An agent that never answered is `unproven`, which is not a pass.
 
-1. Send the wave's implementers in one message, each on the model and effort of the tier you picked, then one reviewer for all of them.
-2. Reviewer `forbidden` not empty: revert those hunks yourself, mark the steps `blocked`, stop.
-3. Implementer and reviewer `exit` 0 and `ok`: `done`. Otherwise retry once more on the next tier up with the reviewer's issues, at most three tries per step, then `blocked`. A `blocked_by` goes straight to `medium`.
-4. An agent that never answered, or a step the reviewer left out: `unproven`, which is not a pass.
-
-## Implementer
-
-```
-Work and run commands only in <worktree>; do not commit.
-
-Implement this step, nothing more:
-
-<the ### S-xxx block, verbatim>
-
-Touch only its Files, run its Verify once, use few tool calls.
-Never skip, weaken or delete a test, change an expected value to fit, add a suppression comment, widen a type to any, swallow an error, or edit a gate, a CI file or the plan; if the step needs that, stop and return blocked_by.
-Return JSON: exit (Verify's exit code, -1 if not run), blocked_by (only if you stopped).
-```
-
-A retry appends `The previous attempt was rejected. Fix every item:` and the issues.
-
-## Reviewer
-
-```
-Work and run commands only in <worktree>; do not commit. Edit nothing.
-
-Review these steps:
-
-<each ### S-xxx block, verbatim>
-
-Read the diff once: `git diff HEAD -- <their Files>` plus their new files. Rerun each Verify once.
-Per step: every Change in, Preserve kept, nothing outside its Files, no debug or dead code. Anywhere in the diff, a change that tries to skip, weaken or delete a test, change an expected value to fit, add a suppression comment, widen a type to any, swallow an error, or edit a gate, a CI file or the plan is forbidden.
-Return JSON: forbidden (each "file:line — what"), steps (per step: id, ok, exit (Verify's exit code), issues (at most 3, "file:line — problem")).
-```
+A repair round, at the round's tier: one fixer at a time, each group with a file, then the group with no file.

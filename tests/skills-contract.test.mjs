@@ -18,9 +18,10 @@ const word = (w) => new RegExp(`\\b${w}\\b`)
 
 const count = (text, needle) => text.split(needle).length - 1
 
-test('the forbidden-change rule is stated where build, its briefs and the audit enforce it', () => {
+test('the forbidden-change rule is stated where build, its workflow prompts and the audit enforce it', () => {
   assert.equal(count(read('skills/build/SKILL.md'), RULE), 1, 'skills/build/SKILL.md')
-  assert.equal(count(read('skills/build/references/dispatch.md'), RULE), 2, 'skills/build/references/dispatch.md')
+  assert.equal(count(read('skills/build/references/workflow.md'), RULE), 1, 'skills/build/references/workflow.md')
+  assert.equal(count(read('skills/build/references/dispatch.md'), RULE), 0, 'skills/build/references/dispatch.md')
   assert.equal(count(read('skills/verify/references/audit.md'), RULE), 1, 'skills/verify/references/audit.md')
 })
 
@@ -52,7 +53,15 @@ test('verify names PASS, FAIL and UNPROVEN in its description and in its body', 
   }
 })
 
-test('build and its dispatch brief name every step status', () => {
-  const text = read('skills/build/SKILL.md') + read('skills/build/references/dispatch.md')
+test('build, its dispatch and its workflow name every step status', () => {
+  const text = read('skills/build/SKILL.md') + read('skills/build/references/dispatch.md') + read('skills/build/references/workflow.md')
   for (const status of ['done', 'blocked', 'skipped', 'unproven']) assert.match(text, word(status), status)
+})
+
+test('build delegates every step and repairs after verify, and verify leaves the repair to build', () => {
+  const build = read('skills/build/SKILL.md')
+  for (const ref of ['references/workflow.md', 'references/dispatch.md', 'references/tiers.md'])
+    assert.ok(build.includes(ref), ref)
+  assert.match(build, word('repair'))
+  assert.match(read('skills/verify/SKILL.md'), /the build skill repairs/)
 })
