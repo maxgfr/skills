@@ -1,3 +1,13 @@
+# [7.0.0](https://github.com/maxgfr/skills/compare/v6.2.0...v7.0.0) (2026-10-10)
+
+
+* feat!: lighter skills: questions in plan mode only, build in place and alone ([#4](https://github.com/maxgfr/skills/issues/4)) ([0e5b31b](https://github.com/maxgfr/skills/commit/0e5b31b6bb42f00e41d1c579ffb1ce1c834a8977))
+
+
+### BREAKING CHANGES
+
+* models.json is no longer read and tiers are gone; the plan format drops status, Depends on, Preserve and Grounded facts; the build step lines lose the tier column.
+
 # [6.2.0](https://github.com/maxgfr/skills/compare/v6.1.1...v6.2.0) (2026-10-09)
 
 
