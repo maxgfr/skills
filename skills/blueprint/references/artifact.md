@@ -7,7 +7,7 @@
 <The observable outcome.>
 
 ## Decisions
-- <question> → <answer, or "assumed: …">
+- <choice> → <the user's answer, or "assumed: …" when you decided it>
 
 ## Non-goals
 - <What this does not do. Optional.>

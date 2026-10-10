@@ -8,7 +8,7 @@ metadata:
 
 # build
 
-Implement an approved plan, never committing. Argument: a plan `<path>`, or none: the plan approved in this conversation, else the newest in `${TMPDIR:-/tmp}/plans/<repo>/`, then in `docs/plans/`. Stop in one line if a step has no Verify.
+Implement an approved plan, never committing. Argument: a plan `<path>`, or none: the plan approved in this conversation, else the newest in `${TMPDIR:-/tmp}/plans/<repo>/`, then in `docs/plans/`. A step without Verify uses the repo's test command.
 
 1. Work where the session is. Only if `git status` shows changes other than the plan file, work in a worktree from HEAD named `build/<slug>`, `<slug>` being the plan's file name without its date (the host's worktree tool, else `git worktree add`), with the dependencies installed so the checks can run.
 2. Take the steps in order: make the Change, then run Verify once. On failure, fix and rerun; after three failed runs the step is `blocked` and every later one `skipped`.
