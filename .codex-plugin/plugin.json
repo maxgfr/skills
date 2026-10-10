@@ -19,7 +19,7 @@
   "interface": {
     "displayName": "maxgfr skills",
     "shortDescription": "Plan, build, and verify repository changes",
-    "longDescription": "A grounded implementation loop in plain Markdown: approved plans, isolated builds, a review that rejects silenced checks, and evidence-backed verification.",
+    "longDescription": "A grounded implementation loop in plain Markdown: approved plans, in-place builds, an audit that rejects silenced checks, and evidence-backed verification.",
     "developerName": "maxgfr",
     "category": "Developer Tools",
     "capabilities": [
