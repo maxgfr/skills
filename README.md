@@ -3,7 +3,7 @@
 Three skills that take a change from plan to proof, on any agent that reads skills (Claude Code, Codex, OpenCode…). They are plain Markdown: nothing to install, nothing to run.
 
 - **blueprint** plans the change with you and asks for one approval.
-- **build** implements it in a git worktree, then hands off to verify.
+- **build** implements it in place, then hands off to verify.
 - **verify** runs your repo's own checks and audits the diff: `PASS`, `FAIL` or `UNPROVEN`.
 
 ## Install
@@ -16,46 +16,11 @@ That works everywhere. Add `--skill verify` to take a single skill. Native plugi
 
 ## Use
 
-Work as usual: open your agent's plan mode, or just describe the change. blueprint takes over, asks its questions and writes the plan; approving it (leaving plan mode) is the only thing you do. build and verify follow on their own, build repairs what verify finds, and you get one line per step, a verdict, and the worktree with its changes left uncommitted for you to review, commit and merge.
+Open your agent's plan mode, or ask for a plan. blueprint reads the repo and asks its questions there, in one round; everything else goes into the plan as an assumption. Approving the plan (leaving plan mode) is the only other thing you do. build then implements it in your current tree, working alone, and hands off to verify, which runs your checks and audits the diff once; build repairs what fails, up to two rounds. You get one line per step, a verdict, and the changes left uncommitted for you to review and commit. build only moves to a worktree when your tree already holds changes outside the plan.
 
-Each skill also runs alone: build on an approved plan (blueprint saves it in `${TMPDIR:-/tmp}/plans/<repo>/`, and in `docs/plans/` only when you ask to keep it), verify on any finished work (checks only), or verify with a plan path to add the audit.
+Each skill also runs alone: build on an approved plan (blueprint writes it to plan mode's file or `${TMPDIR:-/tmp}/plans/<repo>/`, and to `docs/plans/` only when you ask to keep it), verify on any finished work (checks only), or verify with a plan path to add the audit.
 
-## How the work is split
-
-| Job | Who |
-|---|---|
-| Plan | your session |
-| Build | one subagent per step, in parallel: `small` by default, `large` for a UI step, `medium` or more for a security step; a reviewer per step (`review`, `large` for security); a smaller implementer can hand its step to `large`; a failed try retries one tier up |
-| Repair | after a verify `FAIL`, one fixer per file, one after another, `medium` then `large`, three rounds at most |
-| Final audit | `large` |
-
-verify never prints a verdict without running the checks, never installs or writes, and the reviewer and the audit reject a skipped test, a silenced checker or an edited gate.
-
-In Claude Code, build runs the steps as a Workflow, the deterministic script in skills/build/references/workflow.md. A plan of fifteen steps launches fifteen implementers at once, past the default workflow size: raise "Dynamic workflow size" in /config. Other hosts run the same loop with their subagent tool.
-
-## Models (optional)
-
-With no config, every tier is your session's model. To pick models, write `~/.agents/models.json` (or `<repo>/.agents/models.json`, which wins key by key), with one entry per agent:
-
-```json
-{
-  "claude": {
-    "small":  { "model": "haiku",  "effort": "max" },
-    "medium": { "model": "sonnet", "effort": "high" },
-    "large":  { "model": "opus",   "effort": "high" }
-  }
-}
-```
-
-A tier is `{ "model", "effort" }` or just a model name, which runs at your session's effort: set `effort` to push a small model further (`"max"` above). `review` (default `"medium"`) and `audit` (`"large"`) move those two roles; the rest is the session's call.
-
-## Make blueprint fire every time
-
-A skill's description competes with everything else in the session: your own instructions and other plugins' skills. Plan mode and "make a plan" always reach blueprint; a plain "add X" may go straight to code. To route every non-trivial change through it, add one line to your `CLAUDE.md` or `AGENTS.md`:
-
-```
-For any feature or change that spans several files or leaves a decision open, invoke the blueprint skill before writing code.
-```
+verify never prints a verdict without running the checks, never installs or writes, and build and the audit reject a skipped test, a silenced checker or an edited gate.
 
 ## Run only on request
 

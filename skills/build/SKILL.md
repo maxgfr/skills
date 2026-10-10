@@ -1,6 +1,6 @@
 ---
 name: build
-description: Implement an approved plan in a worktree with one subagent per step on the tier the step needs and a reviewer for each, then run verify and repair until it passes. Use when a plan was just approved, including on leaving plan mode, or when an approved plan exists and the user wants it implemented.
+description: Implement an approved plan, then check it with verify and repair what fails. Use when a plan was just approved, including on leaving plan mode, or when the user wants an approved plan implemented.
 license: MIT
 metadata:
   opencode/autoinvoke: 'true'
@@ -8,30 +8,22 @@ metadata:
 
 # build
 
-Implement an approved plan in a git worktree with subagents, never committing. Argument: none (the newest `status: approved` plan in `${TMPDIR:-/tmp}/plans/<repo>/`, else in `docs/plans/`) or `<path>`.
+Implement an approved plan, never committing. Argument: a plan `<path>`, or none: the plan approved in this conversation, else the newest in `${TMPDIR:-/tmp}/plans/<repo>/`, then in `docs/plans/`. Stop in one line if a step has no Verify.
 
-1. Read the plan. A plan approved in plan mode but not saved yet: save it first at `${TMPDIR:-/tmp}/plans/<repo>/<YYYY-MM-DD>-<slug>.md` (in `docs/plans/` only when the user asks to keep it), `status: approved`, one `### S-xxx — title` per step with `Files`, `Depends on`, `Change`, `Preserve` and `Verify`. When reading the plan, a `Depends on` range such as `S-001…S-009` counts as each id in it; never rewrite the plan for it. Stop in one line if the plan is not approved, a step has no Verify command, `Depends on` names a step that does not exist, or `Depends on` loops.
-2. From the repo root, with `<slug>` the plan's file name without its date: `git worktree add -b build/<slug> ../<repo>-build-<slug> HEAD`. Work only there. If the tree is dirty beyond the plan file, say those changes are not in the build.
-3. Order the steps by `Depends on` and give each its tier (`references/tiers.md`).
-4. Delegate every step; never code one yourself. One implementer per step and one reviewer per implementation, each step starting as soon as the steps it waits for are `done`, so independent steps run at the same time: fifteen steps is fifteen implementers, launch them all. With a workflow tool that runs a script of subagents (`agent()`), run `references/workflow.md`; with none, or if it refuses the run or is not allowed, use your subagent tool as `references/dispatch.md` says. Only with no subagent tool at all, build alone as below; the tier column then reads `solo`.
-5. A step after a failed one is `skipped`. Read the whole diff (`git diff` plus new files) and revert any change to a file no step lists. Never: skip, weaken or delete a test, change an expected value to fit, add a suppression comment, widen a type to any, swallow an error, or edit a gate, a CI file or the plan. Revert any such hunk, and every `forbidden` one, and stop.
+1. Work where the session is. Only if `git status` shows changes other than the plan file, work in a worktree from HEAD named `build/<slug>`, `<slug>` being the plan's file name without its date (the host's worktree tool, else `git worktree add`), with the dependencies installed so the checks can run.
+2. Take the steps in order: make the Change, then run Verify once. On failure, fix and rerun; after three failed runs the step is `blocked` and every later one `skipped`.
+3. Do the steps yourself. Use subagents only for several heavy steps that share no file and need none of each other: launch them in a single message, each with the plan path, its step id, the rule of step 4 and "touch only its Files, run Verify once, return `{exit, note}`". A failed result is a failed run of step 2; a subagent that never answers leaves its step `unproven`.
+4. Never: skip, weaken or delete a test, change an expected value to fit, add a suppression comment, widen a type to any, swallow an error, or edit a gate, a CI file or the plan. Once every step has run, read the whole diff (`git diff` plus new files) and revert any hunk that does, and any change to a file no step lists.
 
-Building alone: take the steps one at a time in `Depends on` order. Implement each as `implementerPrompt` of `references/workflow.md` says, run its Verify, then check your diff against the `reviewerPrompt` checklist. It is `done` when Verify exits 0 and the checklist holds. Otherwise try again with the failed items as the issues, three tries at most, then `blocked`. No tiers and no `escalate`. `skipped` and the stop on a forbidden change work as in `references/dispatch.md`.
-
-Print one line per step:
+Print one line per step, before anything else:
 
 ```
-S-001 done 0 small
-S-002 blocked 1 medium src/a.ts:3 — missing branch
-S-003 skipped - - needs S-002
+S-001 done 0
+S-002 unproven - no answer
+S-003 blocked 1 src/a.ts:3 — missing branch
+S-004 skipped - needs S-003
 ```
 
-The columns are the step, its status, Verify's exit code and the tier that built it. Then one line: `worktree <path> <branch>`. Print these lines before anything else. Not all `done`: name the step that stopped, and stop.
+The columns are the step, its status, Verify's exit code and a note. Then `worktree <path> <branch>`, only if you created one. Not all `done`: stop there.
 
-All `done`: invoke the verify skill with the plan's absolute path and the worktree as the repo. On each `FAIL`, run a repair round with the fixers of `fixerPrompt` in `references/workflow.md`: through its `repair` args with a workflow tool, launched as `references/dispatch.md` says with a subagent tool, or yourself when `solo`.
-
-1. Group verify's failing `gate` lines and its `finding` lines by the file they name; the lines naming none form one group.
-2. At the round's tier, run one fixer at a time: each group with a file, then the group with no file.
-3. Print `repair <round> <fixed>/<groups>`. If the round fixed nothing, stop: the last verdict stands. Otherwise invoke verify again, the third round included.
-
-Stop on `PASS`, on `UNPROVEN`, or when the verify after the third round still says `FAIL`. End with verify's last verdict: a run that ends on `FAIL` or `UNPROVEN` is not done, and its lines say what is left.
+All `done`: invoke the verify skill with the plan's absolute path, in the tree you built in. On `FAIL`, repair what its `gate` and `finding` lines name, each finding with a test that shows it, then rerun the failing `gate` commands, or every gate if none failed: two repair rounds at most, never a second audit. End by printing the last verdict in verify's format: `PASS` once every rerun exits 0, else `FAIL` with what still fails.
