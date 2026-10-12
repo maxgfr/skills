@@ -51,6 +51,15 @@ test('build and verify read their role from models.json, and the README document
   }
 })
 
+// With a `subagent` role set the session supervises: coders on the role write the
+// code, repairs included, and the diff read after a repair keeps what a `FAIL` line calls for.
+test('with a subagent role set, build writes no code itself, repairs included', () => {
+  const build = read('skills/build/SKILL.md')
+  assert.match(build, /`subagent` role set[^.]*never write code/)
+  assert.match(build, /On `FAIL`, coders on the `subagent` role, else you, repair/)
+  assert.match(build, /no `FAIL` line calls for/)
+})
+
 test('no tiers, in the skills or the README', () => {
   for (const file of [...walk(join(ROOT, 'skills')), join(ROOT, 'README.md')])
     assert.doesNotMatch(readFileSync(file, 'utf8'), /\btiers?\b/i, `tier in ${file}`)
