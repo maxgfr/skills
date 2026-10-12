@@ -37,12 +37,23 @@ test('build names every plan field the blueprint skeleton defines', () => {
   for (const field of fields) assert.match(build, word(field), field)
 })
 
-test('no models.json and no tiers, in the skills or the README', () => {
-  for (const file of [...walk(join(ROOT, 'skills')), join(ROOT, 'README.md')]) {
-    const text = readFileSync(file, 'utf8')
-    assert.doesNotMatch(text, /models\.json/, `models.json in ${file}`)
-    assert.doesNotMatch(text, /\btiers?\b/i, `tier in ${file}`)
+// Each skill stands alone, so build and verify state the same lookup.
+const ROLE_LOOKUP = "A role comes from `.agents/models.json` in the repo, else `~/.agents/models.json`"
+
+test('build and verify read their role from models.json, and the README documents both roles', () => {
+  const roles = { 'skills/build/SKILL.md': 'subagent', 'skills/verify/SKILL.md': 'review' }
+  const readme = read('README.md')
+  for (const [file, role] of Object.entries(roles)) {
+    const text = read(file)
+    assert.equal(count(text, ROLE_LOOKUP), 1, `role lookup in ${file}`)
+    assert.match(text, new RegExp(`\`${role}\` role`), `${role} in ${file}`)
+    assert.match(readme, new RegExp(`"${role}":`), `${role} in README.md`)
   }
+})
+
+test('no tiers, in the skills or the README', () => {
+  for (const file of [...walk(join(ROOT, 'skills')), join(ROOT, 'README.md')])
+    assert.doesNotMatch(readFileSync(file, 'utf8'), /\btiers?\b/i, `tier in ${file}`)
 })
 
 test('verify names PASS, FAIL and UNPROVEN in its description and in its body', () => {
