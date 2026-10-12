@@ -1,3 +1,10 @@
+# [7.1.0](https://github.com/maxgfr/skills/compare/v7.0.0...v7.1.0) (2026-10-12)
+
+
+### Features
+
+* subagents take their model and effort from models.json roles ([#5](https://github.com/maxgfr/skills/issues/5)) ([6ff0fb5](https://github.com/maxgfr/skills/commit/6ff0fb542890bb7e15343d801c19b05aa61cb494))
+
 # [7.0.0](https://github.com/maxgfr/skills/compare/v6.2.0...v7.0.0) (2026-10-10)
 
 
