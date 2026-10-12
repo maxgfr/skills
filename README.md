@@ -22,6 +22,21 @@ Each skill also runs alone: build on an approved plan (blueprint writes it to pl
 
 verify never prints a verdict without running the checks, never installs or writes, and build and the audit reject a skipped test, a silenced checker or an edited gate.
 
+## Models
+
+Planning and build's own work run in your session, on the model and effort your agent is set to (in Claude Code, `model` and `effortLevel` in `settings.json`). The subagents take theirs from `~/.agents/models.json`, or `<repo>/.agents/models.json`, which wins role by role, with one entry per agent:
+
+```json
+{
+  "claude": {
+    "subagent": { "model": "opus", "effort": "low" },
+    "review":   { "model": "opus", "effort": "medium" }
+  }
+}
+```
+
+`subagent` runs build's parallel steps and `review` runs verify's audit. A role is `{ "model", "effort" }` or just a model name; what it leaves out, or a missing file, falls back to your session.
+
 ## Run only on request
 
 All three run on their own when they fit. To keep one for explicit calls: add `disable-model-invocation: true` to its `SKILL.md` (Claude Code), set `allow_implicit_invocation: false` in `agents/openai.yaml` (Codex), or set `metadata.opencode/autoinvoke: 'false'` (OpenCode).

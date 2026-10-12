@@ -318,12 +318,12 @@ export function validate(dir = root) {
 
   // ------------------------------------------------------------ model names
 
-  // Skills speak in tiers (small, medium, large). A model name belongs in the
+  // Skills speak in roles (subagent, review). A model name belongs in the
   // user's models.json; one that leaks into skills/ pins every host to it.
   for (const file of walk(join(rootDir, 'skills'))) {
     const text = readFileSync(file, 'utf8')
     const m = MODEL_NAME.exec(text)
-    if (m) fail(file, `names the model "${m[0]}". Use a tier (small, medium, large); names live only in models.json.`)
+    if (m) fail(file, `names the model "${m[0]}". Use a role (subagent, review); names live only in models.json.`)
   }
 
   return { problems, checked }

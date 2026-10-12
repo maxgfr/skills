@@ -12,7 +12,9 @@ Run the repo's own checks once and print a short verdict; with a plan path or `a
 
 1. **Checks.** Find what the repo calls green: its test, lint, typecheck and build scripts (`package.json`, `pyproject.toml`, `Makefile`…) and the commands its CI runs on push or pull request. If one script already runs the others (`npm run check`), run only that one. Skip installs, deploys and anything that writes or only works on a CI runner. Run each once from the repo root, under bash. If `git status` shows a tracked file changed by a check, say which. No check found: `UNPROVEN`. No argument: stop here.
 2. **Diff.** With `<ref>`: `git diff <ref>`. Else, if `git status` shows any change, untracked files included: `git diff HEAD`. Else: `git diff $(git merge-base HEAD origin/HEAD)`. Always add the untracked files. Unknown ref: say so and stop. Nothing changed at all: no audit.
-3. **Audit.** One subagent with `references/audit.md`, on your own model. No subagent tool: audit yourself.
+3. **Audit.** One subagent with `references/audit.md`, on the `review` role. No subagent tool: audit yourself.
+
+A role comes from `.agents/models.json` in the repo, else `~/.agents/models.json` (the repo wins role by role), under your agent's key (`claude`, `codex`…). It is `{ "model", "effort" }` or a model name; pass what it sets to the subagent tool when it takes them, and leave the rest to the session.
 
 `FAIL`: a check failed or the audit found something. Else `UNPROVEN`: no check ran, or the auditor never answered. Otherwise `PASS`. Print only:
 
