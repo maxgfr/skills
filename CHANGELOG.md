@@ -1,3 +1,10 @@
+# [7.2.0](https://github.com/maxgfr/skills/compare/v7.1.0...v7.2.0) (2026-10-12)
+
+
+### Features
+
+* build supervises and coders on the subagent role write every step and repair ([#6](https://github.com/maxgfr/skills/issues/6)) ([b09e57a](https://github.com/maxgfr/skills/commit/b09e57a987fab7367ab9c167f12daf9c4ddd827f))
+
 # [7.1.0](https://github.com/maxgfr/skills/compare/v7.0.0...v7.1.0) (2026-10-12)
 
 
