@@ -16,7 +16,7 @@ That works everywhere. Add `--skill verify` to take a single skill. Native plugi
 
 ## Use
 
-Open your agent's plan mode, or ask for a plan. blueprint reads the code the change touches and decides what the repo or a sensible default settles, writing each choice into the plan as an assumption. It asks only what it cannot guess: usually nothing, at most three questions in one round. Approving the plan (leaving plan mode) is where you correct it, and the only other thing you do. build then implements it in your current tree, working alone, and hands off to verify, which runs your checks and audits the diff once; build repairs what fails, up to two rounds. You get one line per step, a verdict, and the changes left uncommitted for you to review and commit. build only moves to a worktree when your tree already holds changes outside the plan.
+Open your agent's plan mode, or ask for a plan. blueprint reads the code the change touches and decides what the repo or a sensible default settles, writing each choice into the plan as an assumption. It asks only what it cannot guess: usually nothing, at most three questions in one round. Approving the plan (leaving plan mode) is where you correct it, and the only other thing you do. build then implements it in your current tree and hands off to verify, which runs your checks and audits the diff once; build repairs what fails, up to two rounds. You get one line per step, a verdict, and the changes left uncommitted for you to review and commit. build only moves to a worktree when your tree already holds changes outside the plan.
 
 Each skill also runs alone: build on an approved plan (blueprint writes it to plan mode's file or `${TMPDIR:-/tmp}/plans/<repo>/`, and to `docs/plans/` only when you ask to keep it), verify on any finished work (checks only), or verify with a plan path to add the audit.
 
@@ -24,7 +24,7 @@ verify never prints a verdict without running the checks, never installs or writ
 
 ## Models
 
-Planning and build's own work run in your session, on the model and effort your agent is set to (in Claude Code, `model` and `effortLevel` in `settings.json`). The subagents take theirs from `~/.agents/models.json`, or `<repo>/.agents/models.json`, which wins role by role, with one entry per agent:
+Planning and supervision run in your session, on the model and effort your agent is set to (in Claude Code, `model` and `effortLevel` in `settings.json`). The subagents take theirs from `~/.agents/models.json`, or `<repo>/.agents/models.json`, which wins role by role, with one entry per agent:
 
 ```json
 {
@@ -35,7 +35,7 @@ Planning and build's own work run in your session, on the model and effort your 
 }
 ```
 
-`subagent` runs build's parallel steps and `review` runs verify's audit. A role is `{ "model", "effort" }` or just a model name; what it leaves out, or a missing file, falls back to your session.
+With `subagent` set and an agent that runs subagents, coders on that role write every step and repair while your session briefs them, reads the diff and decides; otherwise build writes the code itself. `review` runs verify's audit. A role is `{ "model", "effort" }` or just a model name; what it leaves out, or a missing file, falls back to your session.
 
 ## Run only on request
 
