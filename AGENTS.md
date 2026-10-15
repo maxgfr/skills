@@ -16,7 +16,7 @@ skills/<name>/
 - **The description is the trigger.** Say when to use the skill, in the words a user would type. `npm run validate` rejects a description with no trigger clause.
 - **Every reference is linked from `SKILL.md`.** An orphan is never opened. Validated.
 - **Each skill stands alone.** It can be installed by itself, so it never points into another skill's files.
-- **Never a model name.** Subagents run on a role (`subagent`, `review`) the user maps in `models.json`, else on the session's model. A model name under `skills/` fails validation.
+- **Never a model name.** Subagents run on a role (`subagent`, `review`) the user maps in `models.json`, else on the lightest model the host's subagent tool offers. A model name under `skills/` fails validation.
 - **Small output.** Subagents return compact JSON; a skill prints a few lines, never a report file.
 
 ## Before opening a PR

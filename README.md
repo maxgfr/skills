@@ -24,18 +24,18 @@ verify never prints a verdict without running the checks, never installs or writ
 
 ## Models
 
-Planning and supervision run in your session, on the model and effort your agent is set to (in Claude Code, `model` and `effortLevel` in `settings.json`). The subagents take theirs from `~/.agents/models.json`, or `<repo>/.agents/models.json`, which wins role by role, with one entry per agent:
+Planning runs in your session, on the model and effort your agent is set to (in Claude Code, `model` and `effortLevel` in `settings.json`). Coding, repairs and verify's audit run in subagents, on the lightest model your agent's subagent tool offers, unless `~/.agents/models.json`, or `<repo>/.agents/models.json`, which wins role by role, sets one per agent:
 
 ```json
 {
   "claude": {
-    "subagent": { "model": "sonnet", "effort": "medium" },
-    "review":   { "model": "sonnet", "effort": "high" }
+    "subagent": "haiku",
+    "review":   { "model": "sonnet", "effort": "medium" }
   }
 }
 ```
 
-With `subagent` set and an agent that runs subagents, build hands the steps and the repair to that role, as one workflow when the tool exists, else one subagent; otherwise build writes the code itself. `review` runs verify's audit, in one pass; unset, your session audits. A role is `{ "model", "effort" }` or just a model name; what it leaves out, or a missing file, falls back to your session.
+build hands the steps and the repair to `subagent`, as one workflow when the tool exists, else one subagent, and never reads or writes the code itself; `review` runs verify's audit, in one pass. Your session only plans, briefs and reads the verdict. Without a subagent tool, it does both itself. A role is `{ "model", "effort" }` or just a model name.
 
 ## Run only on request
 

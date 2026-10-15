@@ -39,6 +39,8 @@ test('build names every plan field the blueprint skeleton defines', () => {
 
 // Each skill stands alone, so build and verify state the same lookup.
 const ROLE_LOOKUP = "A role comes from `.agents/models.json` in the repo, else `~/.agents/models.json`"
+// The session plans; subagents do the rest, on the lightest model unless a role says otherwise.
+const ROLE_DEFAULT = 'A role left unset runs on the lightest model the subagent tool offers.'
 
 test('build and verify read their role from models.json, and the README documents both roles', () => {
   const roles = { 'skills/build/SKILL.md': 'subagent', 'skills/verify/SKILL.md': 'review' }
@@ -46,6 +48,7 @@ test('build and verify read their role from models.json, and the README document
   for (const [file, role] of Object.entries(roles)) {
     const text = read(file)
     assert.equal(count(text, ROLE_LOOKUP), 1, `role lookup in ${file}`)
+    assert.equal(count(text, ROLE_DEFAULT), 1, `role default in ${file}`)
     assert.match(text, new RegExp(`\`${role}\` role`), `${role} in ${file}`)
     assert.match(readme, new RegExp(`"${role}":`), `${role} in README.md`)
   }
@@ -56,6 +59,12 @@ test('build runs its steps as one workflow when the host has one, and falls back
   const build = read('skills/build/SKILL.md')
   assert.match(build, /one workflow/)
   assert.match(build, /[Nn]o workflow tool: one subagent/)
+})
+
+// The session stays light: it neither writes nor reads the code a subagent can handle, and plans alone.
+test('the session plans, and leaves the code to subagents', () => {
+  assert.match(read('skills/build/SKILL.md'), /With a subagent tool, you never write or read the code/)
+  assert.match(read('skills/blueprint/SKILL.md'), /never hand the plan to a planning subagent/)
 })
 
 // The repair goes the same way as the steps, once, and the diff read keeps what a `FAIL` line calls for.
