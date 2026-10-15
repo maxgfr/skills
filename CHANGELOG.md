@@ -1,3 +1,10 @@
+# [7.5.0](https://github.com/maxgfr/skills/compare/v7.4.0...v7.5.0) (2026-10-15)
+
+
+### Features
+
+* subagents default to the lightest model, the session only plans, briefs and reads the verdict ([#9](https://github.com/maxgfr/skills/issues/9)) ([691ffa3](https://github.com/maxgfr/skills/commit/691ffa39a9a188fc5b8a80bb3f69907988870156))
+
 # [7.4.0](https://github.com/maxgfr/skills/compare/v7.3.0...v7.4.0) (2026-10-15)
 
 
