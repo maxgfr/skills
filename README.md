@@ -16,7 +16,7 @@ That works everywhere. Add `--skill verify` to take a single skill. Native plugi
 
 ## Use
 
-Open your agent's plan mode, or ask for a plan. blueprint reads the code the change touches and decides what the repo or a sensible default settles, writing each choice into the plan as an assumption. It asks only what it cannot guess: usually nothing, at most three questions in one round. Approving the plan (leaving plan mode) is where you correct it, and the only other thing you do. build then implements it in your current tree and hands off to verify, which runs your checks and audits the diff once; build repairs what fails, up to two rounds. You get one line per step, a verdict, and the changes left uncommitted for you to review and commit. build only moves to a worktree when your tree already holds changes outside the plan.
+Open your agent's plan mode, or ask for a plan. blueprint reads the code the change touches and decides what the repo or a sensible default settles, writing each choice into the plan as an assumption. It asks only what it cannot guess: usually nothing, at most three questions in one round. Approving the plan (leaving plan mode) is where you correct it, and the only other thing you do. build then implements it in your current tree and hands off to verify, which runs your checks and audits the diff once; build repairs what fails, once. You get one line per step, a verdict, and the changes left uncommitted for you to review and commit. build only moves to a worktree when your tree already holds changes outside the plan.
 
 Each skill also runs alone: build on an approved plan (blueprint writes it to plan mode's file or `${TMPDIR:-/tmp}/plans/<repo>/`, and to `docs/plans/` only when you ask to keep it), verify on any finished work (checks only), or verify with a plan path to add the audit.
 
@@ -29,14 +29,13 @@ Planning and supervision run in your session, on the model and effort your agent
 ```json
 {
   "claude": {
-    "scan":     { "model": "haiku", "effort": "low" },
     "subagent": { "model": "sonnet", "effort": "medium" },
     "review":   { "model": "sonnet", "effort": "high" }
   }
 }
 ```
 
-With `subagent` set and an agent that runs subagents, coders on that role write every step and repair while your session briefs them, reads the diff and decides; otherwise build writes the code itself. `review` runs verify's audit. When verify runs as a workflow, `scan` reads each file of the diff and `review` checks each finding. In Claude Code, workflows run on request or with `claude --model opus --effort ultracode`, and build and verify use one on their own when the tool exists. A role is `{ "model", "effort" }` or just a model name; what it leaves out, or a missing file, falls back to your session.
+With `subagent` set and an agent that runs subagents, build hands the steps and the repair to that role, as one workflow when the tool exists, else one subagent; otherwise build writes the code itself. `review` runs verify's audit, in one pass; unset, your session audits. A role is `{ "model", "effort" }` or just a model name; what it leaves out, or a missing file, falls back to your session.
 
 ## Run only on request
 

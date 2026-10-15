@@ -49,26 +49,26 @@ test('build and verify read their role from models.json, and the README document
     assert.match(text, new RegExp(`\`${role}\` role`), `${role} in ${file}`)
     assert.match(readme, new RegExp(`"${role}":`), `${role} in README.md`)
   }
-  assert.match(read('skills/verify/SKILL.md'), /`scan` role/, 'scan in skills/verify/SKILL.md')
-  assert.match(readme, /"scan":/, 'scan in README.md')
 })
 
-// When the host runs workflows, build and verify use one; without, they keep subagents.
-test('build and verify run as a workflow when the host has one, and fall back without', () => {
-  for (const file of ['skills/build/SKILL.md', 'skills/verify/SKILL.md']) {
-    const text = read(file)
-    assert.match(text, /workflow/, `workflow in ${file}`)
-    assert.match(text, /[Nn]o workflow tool/, `fallback in ${file}`)
-  }
-})
-
-// With a `subagent` role set the session supervises: coders on the role write the
-// code, repairs included, and the diff read after a repair keeps what a `FAIL` line calls for.
-test('with a subagent role set, build writes no code itself, repairs included', () => {
+// When the host runs workflows, build hands its steps to one; without, to one subagent.
+test('build runs its steps as one workflow when the host has one, and falls back without', () => {
   const build = read('skills/build/SKILL.md')
-  assert.match(build, /`subagent` role set[^.]*never write code/)
-  assert.match(build, /On `FAIL`, coders on the `subagent` role, else you, repair/)
+  assert.match(build, /one workflow/)
+  assert.match(build, /[Nn]o workflow tool: one subagent/)
+})
+
+// The repair goes the same way as the steps, once, and the diff read keeps what a `FAIL` line calls for.
+test('build repairs once, the same way as the steps', () => {
+  const build = read('skills/build/SKILL.md')
+  assert.match(build, /On `FAIL`, repair once[^.]*the same way as the steps/)
   assert.match(build, /no `FAIL` line calls for/)
+})
+
+// verify stays one pass: no per-file readers, no refuters, no workflow.
+test('verify audits in a single pass', () => {
+  for (const file of ['skills/verify/SKILL.md', 'skills/verify/references/audit.md'])
+    assert.doesNotMatch(read(file), /refut|\bscan\b|workflow/i, file)
 })
 
 test('no tiers, in the skills or the README', () => {
@@ -94,13 +94,4 @@ test('build names every step status', () => {
 test('build repairs after verify, and verify leaves the repair to build', () => {
   assert.match(read('skills/build/SKILL.md'), word('repair'))
   assert.match(read('skills/verify/SKILL.md'), /the build skill repairs/)
-})
-
-test('the refute brief carries the plan', () => {
-  const refute = read('skills/verify/references/audit.md').split('# Refute brief')[1]
-  assert.match(refute, /^Plan: /m)
-})
-
-test('the workflow audit also reads the whole diff against the plan', () => {
-  assert.match(read('skills/verify/SKILL.md'), /whole diff/)
 })
