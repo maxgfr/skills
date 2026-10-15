@@ -15,7 +15,7 @@ Implement an approved plan, never committing. Argument: a plan `<path>`, or none
 3. With a subagent tool, you never write or read the code: hand all the steps at once to the `subagent` role, as one workflow when the host has a workflow tool, no workflow tool: one subagent. Brief it in a few lines: the tree, the plan path, rules 2 and 4; have it return JSON `{step, exit, note}` per step. Steps it never answers for are `unproven`. No subagent tool: write it yourself.
 4. Never: skip, weaken or delete a test, change an expected value to fit, add a suppression comment, widen a type to any, swallow an error, or edit a gate, a CI file or the plan. Touch nothing outside the steps' Files that no `FAIL` line calls for.
 
-A role comes from `.agents/models.json` in the repo, else `~/.agents/models.json` (the repo wins role by role), under your agent's key (`claude`, `codex`…). It is `{ "model", "effort" }` or a model name; pass what it sets to the subagent tool. A role left unset runs on the lightest model the subagent tool offers.
+A role comes from `.agents/models.json` in the repo, else `~/.agents/models.json` (the repo wins role by role), under your agent's key (`claude`, `codex`…). It is `{ "model", "effort" }` or a model name; pass what it sets to the subagent tool when it takes them. A role left unset runs on the lightest model the subagent tool offers, else on the session's.
 
 Print one line per step, before anything else:
 

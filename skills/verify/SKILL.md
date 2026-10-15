@@ -14,7 +14,7 @@ Run the repo's own checks once and print a short verdict; with a plan path or `a
 2. **Diff.** Pick the diff command, never reading the diff yourself unless you audit. With `<ref>`: `git diff <ref>`. Else, if `git status` shows any change, untracked files included: `git diff HEAD`. Else: `git diff $(git merge-base HEAD origin/HEAD)`. Always add the untracked files. Unknown ref: say so and stop. Nothing changed at all: no audit.
 3. **Audit.** One pass with `references/audit.md`, by one subagent on the `review` role; no subagent tool: audit yourself. Never a second pass.
 
-A role comes from `.agents/models.json` in the repo, else `~/.agents/models.json` (the repo wins role by role), under your agent's key (`claude`, `codex`…). It is `{ "model", "effort" }` or a model name; pass what it sets to the subagent tool. A role left unset runs on the lightest model the subagent tool offers.
+A role comes from `.agents/models.json` in the repo, else `~/.agents/models.json` (the repo wins role by role), under your agent's key (`claude`, `codex`…). It is `{ "model", "effort" }` or a model name; pass what it sets to the subagent tool when it takes them. A role left unset runs on the lightest model the subagent tool offers, else on the session's.
 
 `FAIL`: a check failed or the audit found something. Else `UNPROVEN`: no check ran, or the auditor never answered. Otherwise `PASS`. Print only:
 

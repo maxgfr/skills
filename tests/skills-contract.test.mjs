@@ -40,7 +40,7 @@ test('build names every plan field the blueprint skeleton defines', () => {
 // Each skill stands alone, so build and verify state the same lookup.
 const ROLE_LOOKUP = "A role comes from `.agents/models.json` in the repo, else `~/.agents/models.json`"
 // The session plans; subagents do the rest, on the lightest model unless a role says otherwise.
-const ROLE_DEFAULT = 'A role left unset runs on the lightest model the subagent tool offers.'
+const ROLE_DEFAULT = "A role left unset runs on the lightest model the subagent tool offers, else on the session's."
 
 test('build and verify read their role from models.json, and the README documents both roles', () => {
   const roles = { 'skills/build/SKILL.md': 'subagent', 'skills/verify/SKILL.md': 'review' }
