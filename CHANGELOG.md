@@ -1,3 +1,10 @@
+# [7.4.0](https://github.com/maxgfr/skills/compare/v7.3.0...v7.4.0) (2026-10-15)
+
+
+### Features
+
+* lighter build and verify: one workflow on the subagent role, one review pass ([#8](https://github.com/maxgfr/skills/issues/8)) ([d3047f6](https://github.com/maxgfr/skills/commit/d3047f66ff06db851d906c0173b3b152bda6dcbc))
+
 # [7.3.0](https://github.com/maxgfr/skills/compare/v7.2.0...v7.3.0) (2026-10-15)
 
 
