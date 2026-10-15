@@ -1,3 +1,10 @@
+# [7.3.0](https://github.com/maxgfr/skills/compare/v7.2.0...v7.3.0) (2026-10-15)
+
+
+### Features
+
+* verify audits in a workflow on the scan and review roles, build runs its coders as one workflow ([#7](https://github.com/maxgfr/skills/issues/7)) ([40a7c2c](https://github.com/maxgfr/skills/commit/40a7c2c4ea791fe904e04336a43c1eb9cc84a262))
+
 # [7.2.0](https://github.com/maxgfr/skills/compare/v7.1.0...v7.2.0) (2026-10-12)
 
 
