@@ -29,13 +29,14 @@ Planning and supervision run in your session, on the model and effort your agent
 ```json
 {
   "claude": {
-    "subagent": { "model": "opus", "effort": "low" },
-    "review":   { "model": "opus", "effort": "medium" }
+    "scan":     { "model": "haiku", "effort": "low" },
+    "subagent": { "model": "sonnet", "effort": "medium" },
+    "review":   { "model": "sonnet", "effort": "high" }
   }
 }
 ```
 
-With `subagent` set and an agent that runs subagents, coders on that role write every step and repair while your session briefs them, reads the diff and decides; otherwise build writes the code itself. `review` runs verify's audit. A role is `{ "model", "effort" }` or just a model name; what it leaves out, or a missing file, falls back to your session.
+With `subagent` set and an agent that runs subagents, coders on that role write every step and repair while your session briefs them, reads the diff and decides; otherwise build writes the code itself. `review` runs verify's audit. When verify runs as a workflow, `scan` reads each file of the diff and `review` checks each finding. In Claude Code, workflows run on request or with `claude --model opus --effort ultracode`, and build and verify use one on their own when the tool exists. A role is `{ "model", "effort" }` or just a model name; what it leaves out, or a missing file, falls back to your session.
 
 ## Run only on request
 

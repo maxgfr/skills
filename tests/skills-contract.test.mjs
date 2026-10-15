@@ -49,6 +49,17 @@ test('build and verify read their role from models.json, and the README document
     assert.match(text, new RegExp(`\`${role}\` role`), `${role} in ${file}`)
     assert.match(readme, new RegExp(`"${role}":`), `${role} in README.md`)
   }
+  assert.match(read('skills/verify/SKILL.md'), /`scan` role/, 'scan in skills/verify/SKILL.md')
+  assert.match(readme, /"scan":/, 'scan in README.md')
+})
+
+// When the host runs workflows, build and verify use one; without, they keep subagents.
+test('build and verify run as a workflow when the host has one, and fall back without', () => {
+  for (const file of ['skills/build/SKILL.md', 'skills/verify/SKILL.md']) {
+    const text = read(file)
+    assert.match(text, /workflow/, `workflow in ${file}`)
+    assert.match(text, /[Nn]o workflow tool/, `fallback in ${file}`)
+  }
 })
 
 // With a `subagent` role set the session supervises: coders on the role write the
@@ -83,4 +94,13 @@ test('build names every step status', () => {
 test('build repairs after verify, and verify leaves the repair to build', () => {
   assert.match(read('skills/build/SKILL.md'), word('repair'))
   assert.match(read('skills/verify/SKILL.md'), /the build skill repairs/)
+})
+
+test('the refute brief carries the plan', () => {
+  const refute = read('skills/verify/references/audit.md').split('# Refute brief')[1]
+  assert.match(refute, /^Plan: /m)
+})
+
+test('the workflow audit also reads the whole diff against the plan', () => {
+  assert.match(read('skills/verify/SKILL.md'), /whole diff/)
 })
