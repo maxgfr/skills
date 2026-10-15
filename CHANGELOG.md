@@ -1,3 +1,10 @@
+## [7.5.1](https://github.com/maxgfr/skills/compare/v7.5.0...v7.5.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* a role's model is passed only when the subagent tool takes one, else the session's model runs it ([#10](https://github.com/maxgfr/skills/issues/10)) ([b818b36](https://github.com/maxgfr/skills/commit/b818b36f610a406c6ef613c4b0ad163cfc2b21a3))
+
 # [7.5.0](https://github.com/maxgfr/skills/compare/v7.4.0...v7.5.0) (2026-10-15)
 
 
