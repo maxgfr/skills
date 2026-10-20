@@ -26,8 +26,6 @@ test('the Codex plugin exposes automatic public skills and registers no hooks', 
     const metadata = readFileSync(join(root, 'skills', skill, 'agents', 'openai.yaml'), 'utf8')
     // Model-invocable, and the description says when the skill is useful, not "only on request".
     assert.doesNotMatch(skillMd, /^disable-model-invocation:\s*true\s*$/m)
-    assert.doesNotMatch(skillMd, /opencode\/autoinvoke:\s*['"]?false['"]?\s*$/m)
-    assert.match(skillMd, /^\s{2}opencode\/autoinvoke:\s*'true'$/m)
     assert.match(skillMd, /^description: .*Use when /m)
     assert.doesNotMatch(skillMd, /^description: .*only when the user explicitly asks/m)
     assert.match(metadata, /^interface:$/m)

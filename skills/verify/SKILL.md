@@ -2,8 +2,6 @@
 name: verify
 description: Run the repository's own checks once and return PASS, FAIL or UNPROVEN; audit the diff when given a plan. Use when work is finished and should be checked, or the user asks whether it passes.
 license: MIT
-metadata:
-  opencode/autoinvoke: 'true'
 ---
 
 # verify
