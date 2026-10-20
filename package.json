@@ -12,8 +12,7 @@
   "scripts": {
     "validate": "node scripts/validate-skills.mjs",
     "test": "node --test \"tests/**/*.test.mjs\"",
-    "check": "npm run validate && npm test && npm run check-plugin-version",
-    "check-plugin-version": "node scripts/sync-plugin-version.mjs --check"
+    "check": "npm run validate && npm test"
   },
   "devDependencies": {
     "@semantic-release/changelog": "^6.0.3",

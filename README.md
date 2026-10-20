@@ -12,7 +12,9 @@ Three skills that take a change from plan to proof, on any agent that reads skil
 npx skills add maxgfr/skills
 ```
 
-That works everywhere. Add `--skill verify` to take a single skill. Native plugins exist too: `/plugin marketplace add maxgfr/skills` then `/plugin install maxgfr` in Claude Code, `codex plugin marketplace add maxgfr/skills` then `codex plugin add maxgfr@maxgfr-skills` in Codex.
+That works on every agent ([vercel-labs/skills](https://github.com/vercel-labs/skills)). Add `--skill verify` to take a single skill, `-a claude-code` (or `codex`, `opencode`…) to target one agent, `-g` to install for your user rather than the project. `npx skills update` pulls new versions.
+
+Installed the old plugin? Remove it (Claude Code: `/plugin uninstall maxgfr@maxgfr-skills` and `/plugin marketplace remove maxgfr-skills`; Codex: `codex plugin remove maxgfr@maxgfr-skills` and `codex plugin marketplace remove maxgfr-skills`), then `npx skills add maxgfr/skills`.
 
 ## Use
 
