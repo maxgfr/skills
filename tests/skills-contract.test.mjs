@@ -104,3 +104,15 @@ test('build repairs after verify, and verify leaves the repair to build', () => 
   assert.match(read('skills/build/SKILL.md'), word('repair'))
   assert.match(read('skills/verify/SKILL.md'), /the build skill repairs/)
 })
+
+// The README promises all three run on their own when they fit. The plugin
+// manifest tests that used to pin this went with the plugins; the promise did not.
+test('every skill is model-invocable and its description says when to use it', () => {
+  for (const skill of ['blueprint', 'build', 'verify']) {
+    const skillMd = read(`skills/${skill}/SKILL.md`)
+    assert.doesNotMatch(skillMd, /^disable-model-invocation:\s*true\s*$/m, skill)
+    assert.match(skillMd, /^description: .*Use when /m, skill)
+    assert.doesNotMatch(skillMd, /^description: .*only when the user explicitly asks/m, skill)
+  }
+  assert.match(read('README.md'), /All three run on their own when they fit\./)
+})
