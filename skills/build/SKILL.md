@@ -2,8 +2,6 @@
 name: build
 description: Implement an approved plan, then check it with verify and repair what fails. Use when a plan was just approved, including on leaving plan mode, or when the user wants an approved plan implemented.
 license: MIT
-metadata:
-  opencode/autoinvoke: 'true'
 ---
 
 # build

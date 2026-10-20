@@ -113,7 +113,7 @@ test('the frontmatter is judged by the installer\'s own YAML parser, yaml 2.9.1'
   const scenarios = [
     // a continuation line of a multi-line plain value holding ": ", and a nested value holding ": "
     { lines: 'description: Plan a change.\n  Use when a decision is open: invoke it first.', invalid: true },
-    { lines: `description: ${description}\nmetadata:\n  opencode/autoinvoke: a: b`, invalid: true },
+    { lines: `description: ${description}\nmetadata:\n  version: a: b`, invalid: true },
     // a colon at end of line or before a tab
     { lines: 'description: Use when the user says:', invalid: true },
     { lines: 'description: Use when:\tx', invalid: true },
@@ -132,7 +132,7 @@ test('the frontmatter is judged by the installer\'s own YAML parser, yaml 2.9.1'
     // quoted values, with and without a nested map
     { lines: `description: '${description}'\nlicense: MIT`, invalid: false },
     { lines: "description: 'It''s a plan for a change. Use when a decision is open: invoke it first.'", invalid: false },
-    { lines: `description: '${description}'\nmetadata:\n  opencode/autoinvoke: 'true'`, invalid: false },
+    { lines: `description: '${description}'\nmetadata:\n  version: '1.0.0'`, invalid: false },
     // a colon not followed by a space, a block scalar, a flow list and a block list
     { lines: `description: '${description}'\nallowed-tools: Bash(git diff:*), Read`, invalid: false },
     { lines: 'description: >\n  Plans a change before it is written. Use when a decision is open: invoke it first.', invalid: false },

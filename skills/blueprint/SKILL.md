@@ -2,8 +2,6 @@
 name: blueprint
 description: 'Plan a code change and get one approval before any code is written. Use when in plan mode or when the user asks for a plan.'
 license: MIT
-metadata:
-  opencode/autoinvoke: 'true'
 ---
 
 # blueprint
