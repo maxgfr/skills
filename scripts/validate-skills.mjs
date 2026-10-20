@@ -36,9 +36,9 @@ export function extractReferences(body) {
   return refs
 }
 
-// A skill is instructions, nothing to install or run: SKILL.md, references/*.md,
-// and the Codex interface file. Anything else fails, so the skills stay light.
-export const SKILL_FILE = /^(SKILL\.md|references\/[^/]+\.md|agents\/openai\.yaml)$/
+// A skill is instructions, nothing to install or run: SKILL.md and
+// references/*.md. Anything else fails, so the skills stay light.
+export const SKILL_FILE = /^(SKILL\.md|references\/[^/]+\.md)$/
 
 // A model reads the whole SKILL.md every time the skill triggers. Past this
 // many lines the excess belongs in references/, loaded only when a phase needs
@@ -222,7 +222,7 @@ export function validate(dir = root) {
     for (const path of walk(dir)) {
       const rel = relative(dir, path).split(sep).join('/')
       if (!SKILL_FILE.test(rel))
-        fail(path, 'is not Markdown. A skill holds SKILL.md, references/*.md and agents/openai.yaml only.')
+        fail(path, 'is not Markdown. A skill holds SKILL.md and references/*.md only.')
     }
 
     // References should not be orphans — an unlinked reference is one the agent never reads.

@@ -39,7 +39,7 @@ build hands the steps and the repair to `subagent`, as one workflow when the too
 
 ## Run only on request
 
-All three run on their own when they fit. To keep one for explicit calls: add `disable-model-invocation: true` to its `SKILL.md` (Claude Code, OpenCode), or set `allow_implicit_invocation: false` in `agents/openai.yaml` (Codex).
+All three run on their own when they fit. To keep one for explicit calls: add `disable-model-invocation: true` to its `SKILL.md` (Claude Code, OpenCode).
 
 ## Development
 
