@@ -26,7 +26,7 @@ verify never prints a verdict without running the checks, never installs or writ
 
 ## Models
 
-Planning runs in your session, on the model and effort your agent is set to (in Claude Code, `model` and `effortLevel` in `settings.json`). Coding, repairs and verify's audit run in subagents, on the lightest model your agent's subagent tool offers, unless `~/.agents/models.json`, or `<repo>/.agents/models.json`, which wins role by role, sets one per agent:
+Planning runs in your session, on the model and effort your agent is set to (Claude Code: `model` and `effortLevel` in `settings.json`; Codex: `model` and `model_reasoning_effort` in `config.toml`; OpenCode: `model` in `opencode.json`). Coding, repairs and verify's audit run in subagents, on the lightest model your agent's subagent tool offers, unless `~/.agents/models.json`, or `<repo>/.agents/models.json`, which wins role by role, sets one per agent under its key (`claude`, `codex`…):
 
 ```json
 {

@@ -163,7 +163,7 @@ test('the frontmatter is judged by the installer\'s own YAML parser, yaml 2.9.1'
   }
 })
 
-test('the cap matches what Claude Code actually truncates at', () => {
+test('the cap matches the skill listing truncation limit', () => {
   // https://code.claude.com/docs/en/skills — the listing caps the combined
   // description + when_to_use at 1,536 characters (skillListingMaxDescChars).
   assert.equal(LISTING_CAP, 1536)
