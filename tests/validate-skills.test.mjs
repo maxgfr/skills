@@ -3,7 +3,7 @@
 // trigger check only accepted one phrasing, so it failed skills that route fine.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, appendFileSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -55,10 +55,7 @@ test('a skill holds Markdown only: a script in it fails', () => {
     mkdirSync(join(dir, 'skills', 'demo', 'scripts'))
     writeFileSync(join(dir, 'skills', 'demo', 'scripts', 'x.mjs'), 'export {}\n')
   })
-  const plain = fixtureRepo(10, (dir) => {
-    mkdirSync(join(dir, 'skills', 'demo', 'agents'))
-    writeFileSync(join(dir, 'skills', 'demo', 'agents', 'openai.yaml'), 'policy:\n  allow_implicit_invocation: true\n')
-  })
+  const plain = fixtureRepo(10)
   try {
     assert.ok(validate(scripted).problems.some((p) => /x\.mjs/.test(p.file) && /is not Markdown/.test(p.message)))
     assert.deepEqual(validate(plain).problems, [])
@@ -70,12 +67,14 @@ test('a skill holds Markdown only: a script in it fails', () => {
 
 test('a model name anywhere under skills/ fails; tier words pass', () => {
   const named = fixtureRepo(10, (dir) => {
-    mkdirSync(join(dir, 'skills', 'demo', 'agents'))
-    writeFileSync(join(dir, 'skills', 'demo', 'agents', 'openai.yaml'), 'interface:\n  default_prompt: "Run it on sonnet."\n')
+    mkdirSync(join(dir, 'skills', 'demo', 'references'))
+    writeFileSync(join(dir, 'skills', 'demo', 'references', 'run.md'), 'Run it on sonnet.\n')
+    appendFileSync(join(dir, 'skills', 'demo', 'SKILL.md'), 'See references/run.md.\n')
   })
   const tiers = fixtureRepo(10, (dir) => {
-    mkdirSync(join(dir, 'skills', 'demo', 'agents'))
-    writeFileSync(join(dir, 'skills', 'demo', 'agents', 'openai.yaml'), 'interface:\n  default_prompt: "Run it on small, medium or large."\n')
+    mkdirSync(join(dir, 'skills', 'demo', 'references'))
+    writeFileSync(join(dir, 'skills', 'demo', 'references', 'run.md'), 'Run it on small, medium or large.\n')
+    appendFileSync(join(dir, 'skills', 'demo', 'SKILL.md'), 'See references/run.md.\n')
   })
   try {
     assert.ok(validate(named).problems.some((p) => /names the model "sonnet"/.test(p.message)))

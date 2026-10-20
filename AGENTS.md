@@ -5,8 +5,7 @@ Every file under `skills/` is read by a model deciding what to do next, on any h
 ```
 skills/<name>/
 ├─ SKILL.md            # what to do, in a few plain sentences
-├─ references/*.md     # what gets pasted or followed, loaded only when needed
-└─ agents/openai.yaml  # Codex interface
+└─ references/*.md     # what gets pasted or followed, loaded only when needed
 ```
 
 ## Rules
