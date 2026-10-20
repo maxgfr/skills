@@ -27,9 +27,6 @@ jobs:
       - name: Test engines
         run: node --test "tests/**/*.test.mjs"
 
-      - name: Plugin version is in step with package.json
-        run: node scripts/sync-plugin-version.mjs --check
-
   # A network fetch of a third-party CLI, kept out of the gate: it proves the
   # installer can read this repo, and it must not be what turns a PR red when
   # the registry is slow. Pinned, so a new release of the installer is a

@@ -2,7 +2,7 @@
 
 ```bash
 npm ci          # the validator and release tooling; the skills need nothing
-npm run check   # validate + tests + plugin versions
+npm run check   # validate + tests
 ```
 
 ## Adding a skill
@@ -16,7 +16,7 @@ description: <what it does>. Use when <the trigger, in the user's words>.
 ---
 ```
 
-Add `"./skills/<name>"` to both plugin manifests, a line to the README, and run `npm run validate`. [AGENTS.md](./AGENTS.md) says what goes in `SKILL.md` and `references/`.
+That file is all `npx skills` discovers. Add a line to the README and run `npm run validate`. [AGENTS.md](./AGENTS.md) says what goes in `SKILL.md` and `references/`.
 
 ## Changing behaviour
 
@@ -29,7 +29,7 @@ semantic-release reads the history on `main` and picks the bump.
 | `refactor:` `docs:` `test:` `chore:` | none | no release |
 | `feat!: ...` or a `BREAKING CHANGE:` footer | major | an output shape or argument someone depends on |
 
-The release workflow bumps `package.json`, syncs the plugin manifests, writes `CHANGELOG.md`, tags and publishes. Squash-merge with the conventional-commit line as the title.
+The release workflow bumps `package.json`, writes `CHANGELOG.md`, tags and publishes. Squash-merge with the conventional-commit line as the title.
 
 ## Testing
 
