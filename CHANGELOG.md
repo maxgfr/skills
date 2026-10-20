@@ -1,3 +1,10 @@
+# [7.6.0](https://github.com/maxgfr/skills/compare/v7.5.1...v7.6.0) (2026-10-20)
+
+
+### Features
+
+* install via npx skills only ([#13](https://github.com/maxgfr/skills/issues/13)) ([addf6b7](https://github.com/maxgfr/skills/commit/addf6b782e94e67a9dbf39c571240666f6261503))
+
 ## [7.5.1](https://github.com/maxgfr/skills/compare/v7.5.0...v7.5.1) (2026-10-15)
 
 
