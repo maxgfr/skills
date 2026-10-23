@@ -2,3 +2,8 @@ node_modules/
 .worktrees/
 .DS_Store
 *.log
+
+# skills installed by `npx skills add`
+.agents/skills/
+.claude/skills/
+skills-lock.json
